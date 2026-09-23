@@ -1,0 +1,119 @@
+# Caso integrador EnRutaCo S.A.S. — fuente única de hechos, catálogo y reglas.
+# Los agentes solo conocen los hechos de las semanas <= la semana seleccionada.
+# Las cifras del catálogo (§6.2) son las únicas permitidas para costos; los totales se calculan en código.
+
+presupuesto:
+  techo_base: 4200
+  techo_roi: 4830
+
+tipos:
+  O: Obligatorio
+  E: Estratégico
+  H: Habilitador
+
+catalogo:
+  - {c: O1, n: "ERP Cloud (SAP S/4HANA u Oracle Fusion)", m: 980, t: O, v: Alto, r: "Muy alto: caos financiero"}
+  - {c: O2, n: "TMS (Transport Management System)", m: 420, t: O, v: "Muy alto", r: "Muy alto: sin trazabilidad"}
+  - {c: O3, n: "Integración y API Gateway (MuleSoft/Kong)", m: 310, t: O, v: Alto, r: "Alto: silos persistentes"}
+  - {c: O4, n: "Seguridad y ciberseguridad base", m: 180, t: O, v: Medio, r: "Alto: vulnerabilidades"}
+  - {c: O5, n: "Infraestructura Cloud base (AWS/Azure)", m: 260, t: O, v: Alto, r: "Alto: sin escalabilidad"}
+  - {c: E1, n: "CDP (Customer Data Platform)", m: 380, t: E, v: Medio, r: "Bajo: visión fragmentada"}
+  - {c: E2, n: "CRM Corporativo (Salesforce/HubSpot)", m: 290, t: E, v: Medio, r: "Medio: pérdida B2B"}
+  - {c: E3, n: "SCM / Visibilidad de cadena", m: 340, t: E, v: Alto, r: "Medio: ruptura zonas francas"}
+  - {c: E4, n: "BI y Data Warehouse / Lakehouse", m: 280, t: E, v: Alto, r: "Medio: decisiones a ciegas"}
+  - {c: E5, n: "KMS con IA Generativa (RAG + Copilot)", m: 220, t: E, v: Alto, r: "Medio: fuga de conocimiento"}
+  - {c: E6, n: "Automatización y BPM (Low-Code/RPA)", m: 190, t: E, v: Medio, r: "Bajo: lentitud administrativa"}
+  - {c: E7, n: "App móvil mensajeros integrada", m: 175, t: E, v: Alto, r: "Alto: fricción última milla"}
+  - {c: H1, n: "Gestión del cambio y adopción", m: 120, t: H, v: Crítico, r: "Muy alto: boicot interno"}
+  - {c: H2, n: "Capacitación y upskilling (1.200 empleados)", m: 150, t: H, v: Crítico, r: "Muy alto: errores por no uso"}
+  - {c: H3, n: "Gobierno de datos y calidad", m: 95, t: H, v: Alto, r: "Medio: datos corruptos en BI"}
+  - {c: H4, n: "PMO y gestión del proyecto", m: 110, t: H, v: Alto, r: "Medio: sobrecostos y retrasos"}
+
+dinamica: "Cada miembro del Comité representa una fuerza distinta: Crecimiento (CEO), Mercado (Desarrollo de Negocio), Operación (Operaciones), Cliente (Servicio al Cliente), Finanzas (CFO) y Tecnología (TI). Sus preocupaciones chocan entre sí y eso es deliberado."
+
+reglas_presupuesto:
+  - "Los obligatorios no se eliminan, pero pueden fasearse en los años 1, 2 y 3."
+  - "Se deben incluir mínimo 2 habilitadores; excluir H1 o H2 exige análisis de riesgo explícito."
+  - "Se puede exceder el techo base solo con un modelo de ROI con supuestos auditables (recuperación de SLA, reducción de churn o eficiencia operativa), hasta el techo con ROI."
+  - "Cada exclusión se cuestiona tanto como cada inclusión."
+
+rigor:
+  - {desde: 2, t: "El TMS (Transport Management System) es obligatorio e insustituible: la trazabilidad por IoT/GPS y la visibilidad de cadena consumen datos del TMS; no lo reemplazan ni lo absorben."}
+  - {desde: 3, t: "El SLA interno de EnRutaCo (91%) no equivale a indicadores sectoriales de puntualidad; compararlos como si midieran lo mismo invalida la conclusión."}
+  - {desde: 1, t: "Por fallas de gobierno del dato, los KPI que EnRutaCo publica hoy (incluido el OTIF de 87%) no se pueden asumir auditables: pregunta por fuente, fórmula y dueño."}
+  - {desde: 2, t: "EnRutaCo tiene dependencias fundacionales sin resolver (ERP, TMS, integración, datos). Invertir en todo a la vez es propio de organizaciones maduras como DHL; una hoja de ruta que lo haga debe justificarlo."}
+
+semanas:
+  - n: 1
+    lead: ceo
+    titulo: "La junta contrata al equipo consultor"
+    entregable: "Tabla de niveles de gestión (operacional, decisional, estratégico) con decisiones, actores, información disponible y brechas; propuesta de 3 KPIs."
+    hechos:
+      - "Ficha: EnRutaCo S.A.S., logística y transporte de paquetes, fundada en 2008 en Bogotá, 1.200 empleados, facturación de $180.000M COP, 18 ciudades y 3 zonas francas."
+      - "Clientes: e-commerce, retail, farmacéutico y manufactura. Modelos activos: B2B (contratos corporativos) y B2C (última milla). Competencia directa: Servientrega, TCC y Coordinadora. Referente internacional: DHL Express Colombia."
+      - "Crecimiento reciente de +40% impulsado por e-commerce, sin infraestructura tecnológica que lo sostenga."
+      - "OTIF 87% (meta 96%). Churn corporativo 8% anual (meta menor a 3%)."
+      - "Las decisiones se toman sin visibilidad; los reportes gerenciales son semanales y manuales."
+  - n: 2
+    lead: ti
+    titulo: "El Director de TI revela el caos de sistemas"
+    entregable: "Mapa de sistemas As-Is (sistema, función, nivel de gestión, integración actual) y diagrama del flujo lógico del dato desde el pedido hasta la entrega, con cuellos de botella."
+    hechos:
+      - "Más de 20 aplicaciones fragmentadas que no se comunican entre sí; ninguna tiene API."
+      - "Facturación/ERP: AS/400 legacy on-premise, costoso de mantener y con datos atrapados."
+      - "CRM: Excel con macros, sin visión unificada del cliente ni historia."
+      - "TMS: sistema propio desconectado de facturación y de la app móvil."
+      - "App de mensajeros: sin backend integrado; los datos se capturan localmente y no se sincronizan."
+      - "Integración: ninguna; hay re-digitación manual entre sistemas."
+  - n: 3
+    lead: cs
+    titulo: "Un cliente corporativo amenaza con terminar el contrato"
+    entregable: "Capítulo I (Diagnóstico As-Is): niveles de gestión, mapa de sistemas, clasificación TPS/MIS/DSS de cada aplicación, 3 brechas críticas con impacto cuantificado y 3 KPIs con fuente de dato."
+    hechos:
+      - "SLA de entrega 91% (meta corporativa 98%)."
+      - "35% de las rutas operan sin trazabilidad, con seguimiento manual."
+      - "El reporte gerencial consolidado llega semanal, manual, los viernes en la tarde."
+      - "Un retailer transnacional, responsable del 25% de la facturación B2B, envió carta de pre-aviso de terminación de contrato por incumplimientos reiterados de SLA en la última milla."
+  - n: 4
+    lead: dn
+    titulo: "DHL anuncia entrega el mismo día en Colombia"
+    entregable: "Matriz de modelos de negocio actuales vs. potenciales y las capacidades digitales requeridas para cada uno (por ejemplo portal B2B integrado, marketplace B2B2C de última milla)."
+    hechos:
+      - "DHL Express anunció entrega el mismo día en las 5 ciudades principales, respaldada por su plataforma digital e IA de ruteo."
+      - "3 contratos B2B corporativos están en evaluación activa por parte de los clientes."
+      - "El portal digital B2C de EnRutaCo no existe. No hay ninguna API pública para integración con e-commerce de terceros."
+      - "Modelos activos: solo B2B y B2C básicos. DHL opera B2B, B2C y B2G con plataformas diferenciadas; Servientrega tiene portal B2B maduro pero es débil en B2C digital."
+  - n: 5
+    lead: cfo
+    titulo: "El CFO formaliza la bolsa de inversión de $4.200M"
+    entregable: "Plano de arquitectura To-Be (qué sistemas, en qué orden, cómo se integran) y primera tabla de asignación presupuestal con justificación de cada decisión."
+    hechos:
+      - "Presupuesto aprobado: $4.200M COP, techo duro. Hasta $4.830M (+15%) solo con modelo de ROI con supuestos auditables de recuperación de SLA, reducción de churn o eficiencia operativa."
+      - "Costo por envío: $18.700 COP en EnRutaCo frente a $15.100 de la competencia."
+      - "Rotación de mensajeros: 22% trimestral (meta menor a 8%)."
+      - "Benchmark: DHL usa SAP S/4HANA, Salesforce con CDP, Blue Yonder, arquitectura API-first y app propia con IoT; Servientrega usa Oracle o sistema propio, CRM básico, TMS propio e integración parcial."
+  - n: 6
+    lead: ops
+    titulo: "Pérdida masiva de conocimiento operativo"
+    entregable: "Capítulo II: arquitectura To-Be, matriz de modelos de negocio, presupuesto v1 y 2 casos de uso de IA generativa (agente operativo en campo y Copilot de atención al cliente)."
+    hechos:
+      - "La rotación del 22% trimestral hace perder el conocimiento de rutas, clientes difíciles y protocolos críticos; el mensajero nuevo repite los errores del anterior."
+      - "KMS formal: ninguno. Los manuales operativos están en papel o en carpetas sin acceso digital en campo."
+      - "Onboarding de un mensajero nuevo: 3 a 4 semanas sin sistema de apoyo."
+      - "DHL usa IA para optimización de rutas y predicción de demanda por zona; Servientrega tiene manuales operativos físicos sin acceso digital en campo."
+  - n: 7
+    lead: ceo
+    titulo: "El CEO exige indicadores en tiempo real"
+    entregable: "Dashboard ejecutivo con datos simulados, 5 KPIs formalizados (nombre, fórmula, fuente, frecuencia, dueño) y arquitectura BI: fuentes, ETL, DW, dashboard."
+    hechos:
+      - "Reporting actual: semanal, manual, en Excel. Retraso de los datos gerenciales: 5 a 7 días. Herramienta de BI actual: ninguna."
+      - "KPIs formalizados hasta ahora: 0."
+      - "El CEO exige ver los 5 indicadores más críticos del negocio en tiempo real en la reunión de Junta de la semana siguiente."
+  - n: 8
+    lead: ceo
+    titulo: "Sustentación ante el Comité Directivo"
+    entregable: "Capítulo III: Roadmap 2026–2029 completo con dashboard funcional, mínimo 5 KPIs formalizados, gobierno de datos, fases y dependencias, presupuesto final y modelo de ROI si se excede $4.200M."
+    hechos:
+      - "Formato: 20 minutos de presentación y 10 minutos de preguntas del Comité. El CFO evalúa el modelo de ROI; el CEO evalúa la visión estratégica."
+      - "Plazo del roadmap: 3 años (2026–2029). Dashboard funcional en Power BI o Looker Studio."
+      - "Cada decisión de exclusión será cuestionada tanto como cada decisión de inclusión."

@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic>=2.7,<3
+pyyaml>=6.0
+numpy>=1.26
+huggingface_hub>=0.26
+piper-tts==1.8.0

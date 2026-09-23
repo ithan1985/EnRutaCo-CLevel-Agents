@@ -1,0 +1,29 @@
+# Ollama instalado en Windows (necesario para usar una GPU AMD: Docker sobre WSL2 no la expone).
+# Se usa SOLO este archivo (no en capas con docker-compose.yml):
+#   docker compose down && docker compose -f docker-compose.host-ollama.yml up -d --build
+# La API llega a Ollama en el host por host.docker.internal:11434.
+# Si no conecta: en Windows define OLLAMA_HOST=0.0.0.0 (variable de usuario), reinicia Ollama y acepta el aviso del firewall.
+name: enrutaco-agentes
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      args:
+        WITH_XTTS: "${WITH_XTTS:-0}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - models:/models
+      - ./config:/app/config
+      - ./web:/app/web
+
+volumes:
+  models:

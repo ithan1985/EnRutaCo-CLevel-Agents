@@ -1,0 +1,45 @@
+# Agentes locales del Comité Directivo de EnRutaCo: Ollama (LLM) + API FastAPI (agentes, voces, interfaz web).
+# Uso:  cp .env.example .env && docker compose up -d --build   ->  http://localhost:8080
+name: enrutaco-agentes
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"        # un solo hilo de generación: menos memoria y caché de prefijo estable
+      OLLAMA_MAX_LOADED_MODELS: "2"   # deja cargados el modelo rápido y el profundo (32 GB de RAM lo permiten)
+      OLLAMA_KEEP_ALIVE: "30m"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      args:
+        WITH_XTTS: "${WITH_XTTS:-0}"
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - models:/models          # voces y modelos de Hugging Face (caché persistente)
+      - ./config:/app/config    # personas.yaml y caso.yaml editables sin reconstruir
+      - ./web:/app/web          # interfaz editable sin reconstruir
+
+volumes:
+  ollama:
+  models:

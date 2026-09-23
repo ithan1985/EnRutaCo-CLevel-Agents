@@ -1,0 +1,4 @@
+# Opcional (TTS_ENGINE=xtts). Pesado: requiere torch. Solo si aceptas la licencia CPML de XTTS-v2.
+coqui-tts>=0.25
+torch
+torchaudio
