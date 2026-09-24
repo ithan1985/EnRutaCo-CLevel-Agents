@@ -48,3 +48,18 @@ La transcripción está en orden inverso (lo más reciente arriba). Reconstruida
 | Rol crítico | "Verifica la coherencia entre las cifras (capacidad, volumen, costo) y cuestiona cualquier contradicción." |
 | Estado por preocupación | "Registra cada preocupación como abierta, parcial o resuelta, e informa el estado en tu feedback." |
 | Persona y registro | "Habla siempre en español, trata al equipo de usted y actúa como evaluador, nunca como parte del equipo." |
+
+### Estado: implementado
+
+| Regla | Implementación | Tipo |
+|-------|----------------|------|
+| Anclaje obligatorio | `follow_task` exige citar un elemento de la última respuesta | Prompt |
+| Límite anti-bucle | `concern_attempts`: 2 intentos → REFORMULACIÓN; 3 → CIERRE OBLIGATORIO. Tope duro `MAX_FOLLOWS = 6` | Prompt + código |
+| Repregunta repetida | `similar()` la detecta; 1 reintento con `correction_message`; si persiste, `force_close("repeticion")` | Código (determinista) |
+| Andamiaje | `is_confused()` detecta "no entiendo / ¿qué sugieres?" y activa ANDAMIAJE | Prompt + código |
+| Checklist de concreción | Métrica, umbral, herramienta, dueño, cadencia e indicador; preguntar solo por lo que falte | Prompt |
+| Rol crítico | Coherencia de cifras en todo el hilo | Prompt |
+| Estado por preocupación | Campo `estado` (abierta, parcial, resuelta) y `cierre` (limite, repeticion) en la respuesta y la UI | Código |
+| Persona y registro | Regla 9 del sistema: solo español, «ustedes», evaluador y nunca parte del equipo | Prompt |
+
+Verificación: `tests/e2e/mock_bucle.py` reproduce la sesión de este TODO con un modelo que ignora el prompt; las salvaguardas de código cortan el bucle. Pendiente: validar la calidad de las repreguntas con Ollama real (`make host`).

@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from app.config import Settings, Store
 from app.llm import LLMError
 from app.main import create_app
-from app.prompts import budget_info, budget_text, build_messages, build_system, catalog_text, fmt
+from app.prompts import (MAX_FOLLOWS, budget_info, budget_text, build_messages, build_system, catalog_text,
+                         concern_attempts, fmt, is_confused, similar)
 from app.tts.common import normalize_es, pcm_to_wav
 from app.tts.piper_engine import hf_files, resolve_speaker, PiperEngine
 
@@ -36,7 +37,9 @@ class FakeLLM:
         if stats is not None:
             stats.update({"prompt_tokens": 100, "prefill_s": 1.0, "gen_tps": 12.5})
         follow = "reaccion" in schema["properties"]
-        data = self.payload or (
+        # payload: dict fijo, o lista de dicts consumida en orden (una por llamada al modelo).
+        pay = self.payload.pop(0) if isinstance(self.payload, list) else self.payload
+        data = pay or (
             {"reaccion": "Entiendo, pero falta el supuesto.", "seguimiento": "¿Quién audita el supuesto?", "lectura": "parcial", "vacios": ["sin fuente", "sin sensibilidad", "extra"]}
             if follow else
             {"pregunta": "¿Por qué excluyen E2 si hay 3 contratos en evaluación?", "evalua": "Justificación de exclusiones", "senales": ["cita riesgo si NO"], "trampa": "decir que es prescindible"}
@@ -143,18 +146,68 @@ def test_prompt_open_con_presupuesto_y_contexto():
     assert list(schema["properties"])[0] == "pregunta"
 
 
-def test_prompt_follow_cierra_tras_dos_repreguntas():
-    thread = [SimpleNamespace(kind="q", cid="cfo", text="P1", follow=False, reaccion=""),
-              SimpleNamespace(kind="a", cid=None, text="R1", follow=False, reaccion=""),
-              SimpleNamespace(kind="q", cid="cfo", text="P2", follow=True, reaccion="ok"),
-              SimpleNamespace(kind="a", cid=None, text="R2", follow=False, reaccion=""),
-              SimpleNamespace(kind="q", cid="cfo", text="P3", follow=True, reaccion="mm"),
-              SimpleNamespace(kind="a", cid=None, text="R3", follow=False, reaccion="")]
-    req = SimpleNamespace(cid="cfo", week=5, team="", context="", focus="", budget=None, asked=[], thread=thread, cross_from=None)
-    msgs, schema = build_messages("follow", STORE, req)
+def _q(text, cid="ti", follow=True, reaccion=""):
+    return SimpleNamespace(kind="q", cid=cid, text=text, follow=follow, reaccion=reaccion)
+
+
+def _a(text):
+    return SimpleNamespace(kind="a", cid=None, text=text, follow=False, reaccion="")
+
+
+def _req(thread, cid="ti", week=8):
+    return SimpleNamespace(cid=cid, week=week, team="", context="", focus="", budget=None, asked=[], thread=thread,
+                           cross_from=None)
+
+
+LOOP_Q = "¿Cómo podríamos definir los planes de implementación sin afectar la eficiencia operacional actual?"
+
+
+def test_prompt_follow_reglas_de_anclaje_concrecion_y_rol_critico():
+    thread = [_q("P1", cid="cfo", follow=False), _a("R1"), _q("P2", cid="cfo", reaccion="ok"), _a("R2"),
+              _q("P3", cid="cfo", reaccion="mm"), _a("R3")]
+    msgs, schema = build_messages("follow", STORE, _req(thread, cid="cfo", week=5))
     u = msgs[1]["content"]
-    assert "ya lleva 2 repreguntas" in u and "Equipo: R3" in u and "Ricardo (repregunta): mm P3" in u
+    assert "Equipo: R3" in u and "Ricardo (repregunta): mm P3" in u
+    assert "Anclaje obligatorio" in u and "métrica, umbral, herramienta, dueño, cadencia e indicador" in u
+    assert "Si dos cifras no cuadran" in u and "responde a parte de mi preocupación" in u  # prohibida explícitamente
+    assert "ANDAMIAJE" not in u and "CIERRE OBLIGATORIO:" not in u
     assert list(schema["properties"])[:2] == ["reaccion", "seguimiento"]
+
+
+def test_sistema_fija_registro_y_rol_evaluador():
+    s = build_system(STORE.caso, STORE.personas["ti"], 8)
+    assert "nunca en portugués" in s and "«ustedes»" in s and "no te incluyas en el equipo consultor" in s
+
+
+def test_detecta_confusion_y_similitud():
+    assert is_confused("No entiendo, ¿qué sugieres?") and is_confused("¿Podría reformular la pregunta?")
+    assert not is_confused("Con un control plane sobre AWS.")
+    assert similar(LOOP_Q, "¿Cómo podríamos definir los planes de implementación sin afectar la eficiencia operacional?")
+    assert not similar(LOOP_Q, "¿Cuáles políticas específicamente, en capacidad y en costos, sostienen esa escalabilidad?")
+
+
+def test_prompt_andamiaje_ante_no_entiendo():
+    thread = [_q("P1", follow=False), _a("R1"), _q(LOOP_Q), _a("No entiendo, ¿qué sugieres?")]
+    u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
+    assert "ANDAMIAJE" in u and "NO la repitas" in u
+
+
+def test_prompt_reformula_tras_dos_intentos_y_cierra_tras_tres():
+    t2 = [_q("P1", follow=False), _a("R1"), _q(LOOP_Q), _a("R2"), _q(LOOP_Q), _a("R3")]
+    assert concern_attempts(_req(t2)) == 2
+    u2 = build_messages("follow", STORE, _req(t2))[0][1]["content"]
+    assert "REFORMULACIÓN" in u2 and "CIERRE OBLIGATORIO:" not in u2
+    t3 = t2 + [_q(LOOP_Q), _a("R4")]
+    u3 = build_messages("follow", STORE, _req(t3))[0][1]["content"]
+    assert concern_attempts(_req(t3)) == 3 and "CIERRE OBLIGATORIO:" in u3
+
+
+def test_prompt_cierra_al_tope_de_repreguntas():
+    thread = [_q("P0", follow=False), _a("R0")]
+    for i in range(MAX_FOLLOWS):
+        thread += [_q(f"Pregunta distinta número {i} sobre tema {i * 7}"), _a(f"R{i}")]
+    u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
+    assert "CIERRE OBLIGATORIO:" in u
 
 
 def test_intervencion_cruzada_usa_conflicto_natural():
@@ -205,6 +258,45 @@ def test_follow_normaliza_y_limita_vacios():
         ev = read_sse(r)
     d = ev[-1]["data"]
     assert d["lectura"] == "parcial" and len(d["vacios"]) == 2 and d["seguimiento"].startswith("¿Quién")
+
+
+def _thread_json(n_loops=1, last="No entiendo, ¿qué sugieres?"):
+    t = [{"kind": "q", "cid": "ti", "text": "P inicial"}, {"kind": "a", "text": "R inicial"}]
+    for i in range(n_loops):
+        t += [{"kind": "q", "cid": "ti", "text": LOOP_Q, "follow": True}, {"kind": "a", "text": last if i == n_loops - 1 else "R"}]
+    return t
+
+
+def test_follow_repetido_reintenta_con_correccion_y_acepta_la_nueva():
+    rep = {"reaccion": "Responde a parte de mi preocupación.", "seguimiento": LOOP_Q, "lectura": "no_convence", "vacios": []}
+    ok = {"reaccion": "Me refiero a herramienta, dueño y cadencia.", "seguimiento": "¿Qué herramienta ejecuta la política?",
+          "lectura": "parcial", "vacios": []}
+    llm = FakeLLM(payload=[rep, ok])
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json())) as r:
+        ev = read_sse(r)
+    assert [e["type"] for e in ev].count("retry") == 1 and len(llm.calls) == 2
+    corr = llm.calls[1]["messages"][-1]["content"]
+    assert corr.startswith("CORRECCIÓN OBLIGATORIA") and "no entiende" in corr
+    d = ev[-1]["data"]
+    assert d["seguimiento"] == "¿Qué herramienta ejecuta la política?" and d["cierre"] == "" and d["estado"] == "parcial"
+
+
+def test_follow_repetido_dos_veces_se_cierra_sin_bucle():
+    rep = {"reaccion": "Responde a parte de mi preocupación.", "seguimiento": LOOP_Q, "lectura": "no_convence", "vacios": []}
+    llm = FakeLLM(payload=[dict(rep), dict(rep)])
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json(last="Con control plane."))) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["seguimiento"] == "" and d["cierre"] == "repeticion" and d["estado"] == "abierta"
+    assert "acta" in d["reaccion"] and len(llm.calls) == 2
+
+
+def test_follow_tras_tres_intentos_cierre_forzado_aunque_el_modelo_desobedezca():
+    nueva = {"reaccion": "Sigo sin verlo.", "seguimiento": "¿Quién aprueba el cambio de umbral en producción?",
+             "lectura": "no_convence", "vacios": []}
+    llm = FakeLLM(payload=[nueva])
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json(n_loops=3, last="R"))) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["seguimiento"] == "" and d["cierre"] == "limite" and len(llm.calls) == 1
 
 
 def test_follow_sin_respuesta_es_error():

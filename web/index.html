@@ -392,7 +392,9 @@ async function run(cid, kind, body){
   const key = kind==="open" ? "pregunta" : "seguimiento";
   try{
     const done = await streamTurn(kind==="open"?"/api/ask":"/api/follow", body, S.ctl.signal, ev=>{
-      if(!S.live) return; S.live.raw=(S.live.raw||"")+ev.t;
+      if(!S.live) return;
+      if(ev.type==="retry"){ stopAudio(); Object.assign(S.live,{raw:"",reaccion:"",text:"",spoken:false,retry:true}); renderCurrent(); return; }
+      S.live.raw=(S.live.raw||"")+ev.t;
       const r=field(S.live.raw,"reaccion"), q=field(S.live.raw,key);
       S.live.reaccion = kind==="follow" ? r.v : ""; S.live.text = q.v;
       if(!S.live.spoken && q.done && (kind==="open" || r.done)){ S.live.spoken=true; speak(cid, kind==="open"?q.v:`${r.v} ${q.v}`.trim()); }
@@ -404,7 +406,7 @@ async function run(cid, kind, body){
       if(!S.live.spoken) speak(cid, data.pregunta);
     } else {
       const seg=data.seguimiento||"";
-      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
+      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
       if(!S.live.spoken) speak(cid, `${data.reaccion} ${seg}`.trim());
     }
     S.retry=false;
@@ -508,17 +510,19 @@ function renderSeats(){
 function speakerBlock(id, extra){ const p=P(id);
   return h("div",{class:"speaker"}, avatar(id), h("div",null, h("div",{class:"who"}, p.nombre, extra||null), h("div",{class:"role",text:p.cargo}))); }
 const LECT={convence:"Convence",parcial:"Convence a medias",no_convence:"No convence"};
+const CIERRE={limite:"Cierre automático: se agotaron los intentos sobre esta preocupación.",repeticion:"Cierre automático: se evitó repetir una repregunta anterior."};
+const lectTag = q => q.lectura ? h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]+(q.estado?` · preocupación ${q.estado}`:"")}) : null;
 function renderCurrent(){
   const c=$("#current"); let node, cid;
   if(S.live){
     const L=S.live; cid=L.cid; const p=P(cid);
     node=h("div",null, speakerBlock(cid), L.reaccion?h("p",{class:"react",text:L.reaccion}):null,
-      h("div",{class:"qwrap"}, L.text?h("p",{class:"qtext",text:L.text}):h("p",{class:"qtext thinking"}, `${p.corto} está formulando${L.kind==="open"?" su pregunta":" su reacción"}`, h("span",{class:"dots"}))));
+      h("div",{class:"qwrap"}, L.text?h("p",{class:"qtext",text:L.text}):h("p",{class:"qtext thinking"}, `${p.corto} ${L.retry?"está reformulando (evita repetirse)":"está formulando"}${L.kind==="open"?" su pregunta":" su reacción"}`, h("span",{class:"dots"}))));
   } else if(lastQ()){
     const q=lastQ(); cid=q.cid;
-    node=h("div",null, speakerBlock(cid, q.lectura?h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]}):null),
+    node=h("div",null, speakerBlock(cid, lectTag(q)),
       q.reaccion&&!q.closed?h("p",{class:"react",text:q.reaccion}):null,
-      h("div",{class:"qwrap"}, h("p",{class:"qtext",text:q.closed?q.reaccion:q.text}), q.closed?h("p",{class:"closed",text:"Punto cerrado. Puedes hacer otra pregunta, una intervención cruzada o pasar la palabra."}):null));
+      h("div",{class:"qwrap"}, h("p",{class:"qtext",text:q.closed?q.reaccion:q.text}), q.closed?h("p",{class:"closed",text:(q.cierre?CIERRE[q.cierre]+" ":"")+"Punto cerrado. Puedes hacer otra pregunta, una intervención cruzada o pasar la palabra."}):null));
   } else {
     cid=S.active; const p=P(cid), w=CFG.semanas[S.week-1];
     const showAnchor = S.week >= (p.desde||1);
@@ -535,7 +539,7 @@ function renderHistory(){
   for(const x of items){ if(x.kind==="q") pairs.push({q:x,a:null}); else if(pairs.length) pairs[pairs.length-1].a=x; }
   if(!pairs.length) return; box.append(h("h2",{text:"Sesión"}));
   for(const pr of pairs.slice().reverse()){ const p=P(pr.q.cid);
-    box.append(h("div",{class:"pair"}, pr.q.reaccion?h("div",{class:"hr",text:`${p.corto}: ${pr.q.reaccion}`}):null,
+    box.append(h("div",{class:"pair"}, pr.q.reaccion?h("div",{class:"hr",text:`${p.corto}: ${pr.q.reaccion}`+(pr.q.estado?` [${pr.q.estado}${pr.q.cierre?", cierre automático":""}]`:"")}):null,
       pr.q.text?h("div",{class:"hq"},h("b",{text:p.corto+": "}),pr.q.text):null, pr.a?h("div",{class:"ha",text:(S.team||"Equipo")+": "+pr.a.text}):null));
   }
 }
@@ -583,7 +587,8 @@ function exportSession(){
   for(const x of S.T){
     if(x.kind==="q"){ n++; const p=P(x.cid);
       out.push("",`### ${n}. ${p.nombre} (${p.cargo})${x.follow?" — repregunta":""}`);
-      if(x.reaccion) out.push(`Reacción: ${x.reaccion}`+(x.lectura?` (${LECT[x.lectura]})`:""));
+      if(x.reaccion) out.push(`Reacción: ${x.reaccion}`+(x.lectura?` (${LECT[x.lectura]}${x.estado?`; preocupación ${x.estado}`:""})`:""));
+      if(x.cierre) out.push(CIERRE[x.cierre]);
       if(x.text) out.push(`Pregunta: ${x.text}`);
       if(x.meta.evalua) out.push(`Evalúa: ${x.meta.evalua}`);
       if(x.meta.vacios?.length) out.push(`Vacíos detectados: ${x.meta.vacios.join("; ")}`);

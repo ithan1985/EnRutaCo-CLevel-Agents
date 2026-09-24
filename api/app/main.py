@@ -26,7 +26,8 @@ from pydantic import BaseModel, Field
 
 from .config import Settings, Store
 from .llm import LLMError, OllamaClient
-from .prompts import build_messages
+from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
+                      follow_count, prior_questions, similar)
 from .tts import build_engine
 from .tts.common import LRU
 
@@ -101,9 +102,34 @@ def validate(kind: str, data: Any) -> dict[str, Any]:
     if not r:
         raise LLMError("invalid_json", "El modelo no produjo una reacción.")
     lect = data.get("lectura")
-    return {"reaccion": r, "seguimiento": str(data.get("seguimiento", "")).strip(),
-            "lectura": lect if lect in ("convence", "parcial", "no_convence") else "parcial",
-            "vacios": strs(data.get("vacios"))[:2]}
+    lect = lect if lect in ("convence", "parcial", "no_convence") else "parcial"
+    return {"reaccion": r, "seguimiento": str(data.get("seguimiento", "")).strip(), "lectura": lect,
+            "estado": estado_de(lect), "cierre": "", "vacios": strs(data.get("vacios"))[:2]}
+
+
+CIERRES = {
+    "limite": "Cierro este punto por ahora y lo dejo en el acta como {estado}.",
+    "repeticion": "No quiero dar más vueltas sobre lo mismo: dejo este punto en el acta como {estado} y paso al siguiente tema.",
+}
+
+
+def repeated(data: dict[str, Any], req: "TurnReq") -> Optional[str]:
+    """Devuelve la pregunta previa que la repregunta repite, o None."""
+    seg = data.get("seguimiento", "")
+    return next((q for q in prior_questions(req) if seg and similar(seg, q)), None)
+
+
+def force_close(data: dict[str, Any], motivo: str) -> dict[str, Any]:
+    """Cierre determinista: el hilo termina aunque el modelo no obedezca."""
+    if data["lectura"] == "convence":
+        data["lectura"] = "parcial"
+    data["estado"] = estado_de(data["lectura"])
+    data["seguimiento"], data["cierre"] = "", motivo
+    data["reaccion"] = f"{data['reaccion'].rstrip()} {CIERRES[motivo].format(estado=data['estado'])}".strip()
+    nota = ("Cierre automático: límite de intentos sobre la misma preocupación." if motivo == "limite"
+            else "Cierre automático: el agente repitió una repregunta anterior.")
+    data["vacios"] = (data["vacios"] + [nota])[-3:]
+    return data
 
 
 # ───────────── App ─────────────
@@ -193,14 +219,38 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             notes = req.mode == "deep" or st.notes_in_quick
             messages, schema = build_messages(kind, store, req, notes=notes)
             model = st.model_for(req.mode)
-            acc, stats = "", {}
-            async for piece in client.chat_stream(model, messages, schema, st.temperature, st.num_predict, stats):
-                acc += piece
-                yield sse({"type": "token", "t": piece})
-            if stats:
-                log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind, stats.get("prompt_tokens"),
-                         stats.get("prefill_s"), stats.get("prefill_tps"), stats.get("gen_tokens"), stats.get("gen_tps"))
-            yield sse({"type": "done", "data": validate(kind, extract_json(acc)), "model": model, "stats": stats, "notes": notes})
+            out: dict[str, Any] = {}
+
+            async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
+                acc, stats = "", {}
+                async for piece in client.chat_stream(model, msgs, schema, st.temperature, st.num_predict, stats):
+                    acc += piece
+                    yield sse({"type": "token", "t": piece})
+                if stats:
+                    log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind,
+                             stats.get("prompt_tokens"), stats.get("prefill_s"), stats.get("prefill_tps"),
+                             stats.get("gen_tokens"), stats.get("gen_tps"))
+                out.update(acc=acc, stats=stats, data=validate(kind, extract_json(acc)))
+
+            async for ev in generate(messages):
+                yield ev
+            data = out["data"]
+            if kind == "follow":
+                prev = repeated(data, req)
+                if prev:
+                    # Un reintento con la corrección explícita; el cliente descarta lo que ya mostró.
+                    log.info("Repregunta repetida de %s; se reintenta con corrección.", req.cid)
+                    yield sse({"type": "retry", "reason": "repeticion"})
+                    retry = [*messages, {"role": "assistant", "content": out["acc"]},
+                             {"role": "user", "content": correction_message(req, data["seguimiento"])}]
+                    async for ev in generate(retry):
+                        yield ev
+                    data = out["data"]
+                    if repeated(data, req):
+                        data = force_close(data, "repeticion")
+                if data["seguimiento"] and (follow_count(req) >= MAX_FOLLOWS or concern_attempts(req) >= MAX_ATTEMPTS):
+                    data = force_close(data, "limite")
+            yield sse({"type": "done", "data": data, "model": model, "stats": out["stats"], "notes": notes})
         except LLMError as e:
             yield sse({"type": "error", "code": e.code, "message": e.message})
         except asyncio.CancelledError:
