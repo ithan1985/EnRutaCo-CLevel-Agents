@@ -25,9 +25,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
+from .guard import sanitize, scaffold
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
-                      follow_count, prior_questions, similar)
+                      follow_count, is_confused, last_answer, prior_questions, similar)
 from .tts import build_engine
 from .tts.common import LRU
 
@@ -104,7 +105,7 @@ def validate(kind: str, data: Any) -> dict[str, Any]:
     lect = data.get("lectura")
     lect = lect if lect in ("convence", "parcial", "no_convence") else "parcial"
     return {"reaccion": r, "seguimiento": str(data.get("seguimiento", "")).strip(), "lectura": lect,
-            "estado": estado_de(lect), "cierre": "", "vacios": strs(data.get("vacios"))[:2]}
+            "estado": estado_de(lect), "cierre": "", "guia": "", "vacios": strs(data.get("vacios"))[:2]}
 
 
 CIERRES = {
@@ -117,6 +118,14 @@ def repeated(data: dict[str, Any], req: "TurnReq") -> Optional[str]:
     """Devuelve la pregunta previa que la repregunta repite, o None."""
     seg = data.get("seguimiento", "")
     return next((q for q in prior_questions(req) if seg and similar(seg, q)), None)
+
+
+def apply_scaffold(data: dict[str, Any], prev: str, req: "TurnReq") -> dict[str, Any]:
+    guia = scaffold(prev, (t.text for t in req.thread if t.kind == "a"))
+    data.update(guia, lectura="no_convence", guia="andamiaje")
+    data["estado"] = estado_de(data["lectura"])
+    data["vacios"] = (data["vacios"] + ["Andamiaje automático: el modelo repitió la pregunta ante la confusión del equipo."])[-3:]
+    return data
 
 
 def force_close(data: dict[str, Any], motivo: str) -> dict[str, Any]:
@@ -230,14 +239,18 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind,
                              stats.get("prompt_tokens"), stats.get("prefill_s"), stats.get("prefill_tps"),
                              stats.get("gen_tokens"), stats.get("gen_tps"))
-                out.update(acc=acc, stats=stats, data=validate(kind, extract_json(acc)))
+                out.update(acc=acc, stats=stats, data=sanitize(kind, validate(kind, extract_json(acc))))
 
             async for ev in generate(messages):
                 yield ev
             data = out["data"]
             if kind == "follow":
                 prev = repeated(data, req)
-                if prev:
+                if prev and is_confused(last_answer(req)):
+                    # El equipo no entiende y el modelo solo repite: andamiaje con plantilla, sin gastar otra llamada.
+                    log.info("Andamiaje determinista para %s (confusión + repetición).", req.cid)
+                    data = apply_scaffold(data, prev, req)
+                elif prev:
                     # Un reintento con la corrección explícita; el cliente descarta lo que ya mostró.
                     log.info("Repregunta repetida de %s; se reintenta con corrección.", req.cid)
                     yield sse({"type": "retry", "reason": "repeticion"})

@@ -12,6 +12,8 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Iterable
 
+from .guard import team_figures
+
 MAX_WORDS_Q = 35
 MAX_FOLLOWS = 6          # tope duro de repreguntas por hilo (salvaguarda; el cierre normal es por preocupación)
 MAX_ATTEMPTS = 3         # intentos sobre la MISMA preocupación antes de cerrarla con calificación
@@ -329,6 +331,12 @@ def follow_task(p: dict[str, Any], req: Any) -> str:
         "- Feedback con información: en 'reaccion' di qué quedó resuelto y qué sigue pendiente, con nombre propio. "
         "Prohibidas las fórmulas vacías como «responde a parte de mi preocupación».",
     ]
+    cifras = team_figures(t.text for t in req.thread if t.kind == "a")
+    if cifras:
+        reglas.append(
+            "- CIFRAS QUE EL EQUIPO YA DIO EN ESTE HILO (úsalas: no preguntes por un dato que ya está aquí y revisa si "
+            "cuadran entre sí o con el caso):\n" + "\n".join(f"  · {c}" for c in cifras)
+        )
     task = [
         f"TAREA\nEl equipo respondió. Primero, en 'reaccion', reconoce en 1-2 frases como {p['corto']} lo que sí resolvió "
         "(si algo) y lo que falta, sin repetir lo que el equipo ya dijo ni dar la solución; NO incluyas aquí tu repregunta. "

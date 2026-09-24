@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings, Store
 from app.llm import LLMError
+from app.guard import fix_register, one_question, sanitize, scaffold, team_figures
 from app.main import create_app
 from app.prompts import (MAX_FOLLOWS, budget_info, budget_text, build_messages, build_system, catalog_text,
                          concern_attempts, fmt, is_confused, similar)
@@ -179,6 +180,45 @@ def test_sistema_fija_registro_y_rol_evaluador():
     assert "nunca en portugués" in s and "«ustedes»" in s and "no te incluyas en el equipo consultor" in s
 
 
+def test_saneo_de_registro_y_pregunta_unica():
+    q = "Andrés: ¿Qué plan presentarías para la migración y cómo garantizaríamos que no interfiera con nuestra operación?"
+    assert one_question(fix_register(q)) == "¿Qué plan presentarían para la migración?"
+    assert fix_register("¿Cuál es el volumen que necesitamos migrar para nuestra operación?") == \
+        "¿Cuál es el volumen que necesitan migrar para nuestra operación?"
+    assert fix_register("Podríamos revisarlo") == "Podrían revisarlo"
+    assert fix_register("las baterías y librerías") == "las baterías y librerías"
+    assert one_question("¿Quién es dueño del dato maestro? Esta información es crucial.") == "¿Quién es dueño del dato maestro?"
+    assert one_question("¿Quién es el dueño y con qué cadencia revisa los umbrales?") == "¿Quién es el dueño?"
+    assert one_question("¿Qué costo y qué plazo tiene la fase 1?") == "¿Qué costo y qué plazo tiene la fase 1?"
+    assert one_question("¿Cómo se integran el ERP y el TMS?") == "¿Cómo se integran el ERP y el TMS?"
+
+
+def test_reaccion_sin_preguntas_y_vacios_sin_plantilla():
+    d = sanitize("follow", {"reaccion": "Mantendremos convivencia del AS/400. ¿Cómo garantizaremos la continuidad?",
+                            "seguimiento": "¿Quién es el dueño?", "lectura": "parcial",
+                            "vacios": ["qué faltó o estuvo débil en la respuesta, para el docente", "Sin dueño"]})
+    assert d["reaccion"] == "Mantendrán convivencia del AS/400." and d["vacios"] == ["Sin dueño"]
+    assert set(d["ajustes"]) == {"reaccion", "vacios"}
+
+
+def test_cifras_del_equipo_llegan_al_prompt():
+    figs = team_figures(["El dato maestro quedará en el ERP.",
+                         "Las macros son de Finanzas. Migramos 120.000 registros en 3 fases, con 2 personas y $180M."])
+    assert any("120.000 registros" in f for f in figs) and not any("ERP" in f for f in figs)
+    thread = [_q("P1", follow=False), _a("Migramos 120.000 registros con 2 personas y un costo de $180M."), _q("P2"), _a("R")]
+    u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
+    assert "CIFRAS QUE EL EQUIPO YA DIO" in u and "120.000 registros" in u
+
+
+def test_andamiaje_pregunta_por_lo_que_falta():
+    g = scaffold("¿Cuál es el volumen de registros?", ["El dato maestro quedará en el ERP.",
+                                                        "Migramos 120.000 registros con 2 personas."])
+    assert "herramienta" in g["reaccion"] and "empecemos por dueño" in g["reaccion"]
+    assert g["seguimiento"] == "¿Qué cargo concreto será el dueño de eso?"
+    g2 = scaffold("¿P?", ["No sé."])
+    assert g2["seguimiento"] == "¿Qué herramienta o sistema concreto ejecutará lo que proponen?"
+
+
 def test_detecta_confusion_y_similitud():
     assert is_confused("No entiendo, ¿qué sugieres?") and is_confused("¿Podría reformular la pregunta?")
     assert not is_confused("Con un control plane sobre AWS.")
@@ -269,16 +309,35 @@ def _thread_json(n_loops=1, last="No entiendo, ¿qué sugieres?"):
 
 def test_follow_repetido_reintenta_con_correccion_y_acepta_la_nueva():
     rep = {"reaccion": "Responde a parte de mi preocupación.", "seguimiento": LOOP_Q, "lectura": "no_convence", "vacios": []}
-    ok = {"reaccion": "Me refiero a herramienta, dueño y cadencia.", "seguimiento": "¿Qué herramienta ejecuta la política?",
+    ok = {"reaccion": "Registro el control plane.", "seguimiento": "¿Qué cargo es dueño del control plane?",
           "lectura": "parcial", "vacios": []}
     llm = FakeLLM(payload=[rep, ok])
-    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json())) as r:
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json(last="Con control plane."))) as r:
         ev = read_sse(r)
     assert [e["type"] for e in ev].count("retry") == 1 and len(llm.calls) == 2
     corr = llm.calls[1]["messages"][-1]["content"]
-    assert corr.startswith("CORRECCIÓN OBLIGATORIA") and "no entiende" in corr
+    assert corr.startswith("CORRECCIÓN OBLIGATORIA") and "Cita un elemento concreto" in corr
     d = ev[-1]["data"]
-    assert d["seguimiento"] == "¿Qué herramienta ejecuta la política?" and d["cierre"] == "" and d["estado"] == "parcial"
+    assert d["seguimiento"] == "¿Qué cargo es dueño del control plane?" and d["cierre"] == "" and d["estado"] == "parcial"
+
+
+def test_confusion_mas_repeticion_usa_andamiaje_sin_segunda_llamada():
+    rep = {"reaccion": "Responde a parte de mi preocupación.", "seguimiento": LOOP_Q, "lectura": "no_convence", "vacios": []}
+    llm = FakeLLM(payload=[rep])
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json())) as r:
+        ev = read_sse(r)
+    d = ev[-1]["data"]
+    assert len(llm.calls) == 1 and "retry" not in [e["type"] for e in ev]
+    assert d["guia"] == "andamiaje" and d["cierre"] == "" and d["seguimiento"].endswith("?")
+    assert "Les aclaro a qué me refería" in d["reaccion"] and not similar(d["seguimiento"], LOOP_Q)
+
+
+def test_open_se_sanea_en_la_api():
+    sucia = {"pregunta": "Andrés: ¿Qué plan presentarías para migrar el AS/400 y cómo garantizaríamos la operación? Es clave.",
+             "evalua": "", "senales": [], "trampa": ""}
+    with make_client(FakeLLM(payload=sucia)).stream("POST", "/api/ask", json=body(cid="ti")) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["pregunta"] == "¿Qué plan presentarían para migrar el AS/400?" and "pregunta" in d["ajustes"]
 
 
 def test_follow_repetido_dos_veces_se_cierra_sin_bucle():

@@ -406,7 +406,7 @@ async function run(cid, kind, body){
       if(!S.live.spoken) speak(cid, data.pregunta);
     } else {
       const seg=data.seguimiento||"";
-      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
+      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
       if(!S.live.spoken) speak(cid, `${data.reaccion} ${seg}`.trim());
     }
     S.retry=false;
@@ -511,7 +511,7 @@ function speakerBlock(id, extra){ const p=P(id);
   return h("div",{class:"speaker"}, avatar(id), h("div",null, h("div",{class:"who"}, p.nombre, extra||null), h("div",{class:"role",text:p.cargo}))); }
 const LECT={convence:"Convence",parcial:"Convence a medias",no_convence:"No convence"};
 const CIERRE={limite:"Cierre automático: se agotaron los intentos sobre esta preocupación.",repeticion:"Cierre automático: se evitó repetir una repregunta anterior."};
-const lectTag = q => q.lectura ? h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]+(q.estado?` · preocupación ${q.estado}`:"")}) : null;
+const lectTag = q => q.lectura ? h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]+(q.estado?` · preocupación ${q.estado}`:"")+(q.guia?" · guía automática":"")}) : null;
 function renderCurrent(){
   const c=$("#current"); let node, cid;
   if(S.live){
