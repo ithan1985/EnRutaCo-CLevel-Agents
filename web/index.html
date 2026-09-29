@@ -139,6 +139,8 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .voice b{font-size:.86rem}
 .adv{margin-top:22px}
 .grupoSel select{min-width:150px;border-color:var(--yellow)}
+.panel .field{margin:6px 0}
+.panel .field input,.panel .field select{width:100%;max-width:none}
 .grupoSel[hidden]{display:none}
 .presionar{margin:6px 0 4px;padding:8px 12px;border-left:4px solid var(--bad);background:var(--surface);font-size:.88rem}
 .presionar[hidden]{display:none}
@@ -165,8 +167,6 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
   </div>
   <div class="ctrls">
     <label class="field">Semana del caso <select id="week"></select></label>
-    <label class="field grupoSel" id="grupoField" hidden>Grupo <select id="grupo"><option value="">Elegir grupo…</option></select></label>
-    <label class="field">Equipo consultor <input id="team" type="text" placeholder="Nombre del equipo" maxlength="60" autocomplete="off"></label>
     <label class="field">Modelo <select id="mode"></select></label>
     <button class="tog" id="tVoice" aria-pressed="true" type="button">Voz</button>
     <button class="tog" id="tPanel" aria-pressed="false" type="button">Panel docente</button>
@@ -212,7 +212,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <div class="presionar" id="presionar" hidden></div>
     <h3>Integrantes del equipo</h3>
     <label class="field grupoSel" id="grupoPanelField" hidden>Grupo <select id="grupoPanel"><option value="">Elegir grupo…</option></select></label>
-    <p class="hint">Nombres separados por coma. Aparecen en «Responde:» y como chips (gris = no ha intervenido, verde = ya intervino).</p>
+    <label class="field">Nombre del equipo <input id="team" type="text" placeholder="Nombre del equipo" maxlength="60" autocomplete="off"></label>
     <input type="text" id="integrantes" placeholder="Ej.: Ana, Luis, Sofía" maxlength="200">
     <div class="chips" id="chipsInt"></div>
     <h3>Modo junta</h3>
@@ -376,7 +376,6 @@ async function boot(){
   });
 
   try{ const g = JSON.parse(pref("grupos")||"null"); if (g) S.grupos = normalizarGrupos(g); }catch(e){}
-  $("#grupo").addEventListener("change", e=>{ if(e.target.value) cargarGrupo(e.target.value); });
   $("#grupoPanel").addEventListener("change", e=>{ if(e.target.value) cargarGrupo(e.target.value); });
   $("#bGrupos").addEventListener("click", ()=>importarGrupos($("#gruposJson").value));
   $("#gruposFile").addEventListener("change", async e=>{ const f=e.target.files[0]; if(!f) return;
@@ -610,12 +609,12 @@ function importarGrupos(texto){
     const grupos = normalizarGrupos(JSON.parse(texto));
     if (!grupos.length) throw new Error("No hay grupos en el JSON.");
     S.grupos = grupos; pref("grupos", JSON.stringify(grupos)); renderGrupos();
-    msg.textContent = `${grupos.length} grupo(s) cargado(s): ${grupos.map(g=>g.nombre).join(", ")}. Elige uno en «Grupo», arriba.`;
+    msg.textContent = `${grupos.length} grupo(s) cargado(s): ${grupos.map(g=>g.nombre).join(", ")} — elige uno en «Grupo», en «Integrantes del equipo».`;
     msg.className = "hint";
   }catch(e){ msg.textContent = "No se pudo cargar: " + e.message; msg.className = "hint err"; }
 }
 function renderGrupos(){
-  for (const [selId, fieldId] of [["#grupo","#grupoField"],["#grupoPanel","#grupoPanelField"]]){
+  for (const [selId, fieldId] of [["#grupoPanel","#grupoPanelField"]]){
     const sel = $(selId); if (!sel) continue;
     sel.replaceChildren(h("option",{value:"",text:"Elegir grupo…"}), ...S.grupos.map(g=>h("option",{value:g.id,text:g.nombre})));
     sel.value = S.grupos.some(g=>g.id===S.grupoId) ? S.grupoId : "";
@@ -645,7 +644,7 @@ function cargarGrupo(id){
   S.focos = g.focos; S.presionar = g.presionar;
   S.active = S.junta ? JUNTA[0] : CFG.semanas[S.week-1].lead; S.focus = ""; $("#focus").value = ""; focoPara(S.active);
   renderIntegrantes(); renderBudget(); renderPresionar(); renderGrupos(); saveSession(); renderAll();
-  setStatus(`Grupo cargado: ${g.nombre}. Revisa la propuesta en el Panel docente y da la palabra.`);
+  setStatus(`Grupo cargado: ${g.nombre} — revisa la propuesta en el Panel docente y da la palabra.`);
 }
 
 /* ───── voz: reproducción y animación del retrato ───── */
@@ -744,7 +743,8 @@ function msgCierre(){
              : "Junta completa: las 6 preguntas fueron respondidas. Guarda el acta.";
 }
 function textoApertura(){
-  return `Buenas noches, consultores de ${S.team||"este equipo"}. Soy Carlos Restrepo y presido este Comité Directivo. `+
+  const equipo = (S.team||"").split("·")[0].trim() || "este equipo";
+  return `Buenas noches, consultores de ${equipo}. Soy Carlos Restrepo y presido este Comité Directivo. `+
     "Tienen quince minutos para sustentar su Business Transformation Roadmap. Al terminar, cada director les hará una pregunta "+
     "y yo cerraré con la decisión que nos piden aprobar. Adelante.";
 }
