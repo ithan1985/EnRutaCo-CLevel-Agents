@@ -119,3 +119,12 @@ def test_asked_block_en_junta_no_muestra_textos_previos():
     req = NS(junta=True, asked=[NS(cid="ti", text="¿Cómo garantizan la adopción progresiva de ERP?")])
     out = asked_block(req, personas)
     assert "Andrés (Director de TI)" in out and "adopción progresiva" not in out
+
+
+def test_reaccion_coherente_quita_elogio_cuando_el_tope_baja_la_lectura():
+    from app.guard import reaccion_coherente
+    r = reaccion_coherente("Convenció con datos concretos sobre el modelo B2B2C y su implementación progresiva, "
+                           "mencionando el uso de APIs y el Data Warehouse como herramientas clave.", "no_convence")
+    assert "Convenció" not in r and r.endswith("así no me convence.")
+    r2 = reaccion_coherente("Ustedes proponen APIs para aliados. Sin embargo, no dan plazos.", "parcial")
+    assert r2.startswith("Ustedes proponen APIs") and "Sin embargo" in r2 and r2.endswith("solo a medias.")

@@ -29,11 +29,22 @@ def test_pregunta_se_anuncia_saneada_antes_de_las_notas():
 def test_reaccion_de_junta_se_anuncia_igual_al_texto_final():
     llm = FakeLLM(payload={"reaccion": "Registro el dueño del dato. Esto me ayuda a ver cómo garantizaré la trazabilidad. "
                                        "¿Y el costo?", "lectura": "parcial", "vacios": ["Falta el costo por ola"]})
-    thread = [{"kind": "q", "cid": "ops", "text": "¿Quién es dueño del dato?"}, {"kind": "a", "text": "La Directora de Operaciones."}]
+    thread = [{"kind": "q", "cid": "ops", "text": "¿Quién es dueño del dato?"}, {"kind": "a", "text": "La Directora de Operaciones, con revisión semanal y meta del 80 %."}]
     ev = _eventos(llm, "/api/follow", cid="ops", thread=thread, junta=True)
     speak = [e for e in ev if e["type"] == "speak"]
     assert len(speak) == 1 and speak[0]["text"] == ev[-1]["data"]["reaccion"]
     assert "garantizarán" in speak[0]["text"] and "?" not in speak[0]["text"]
+
+
+def test_reaccion_de_junta_con_tope_no_se_anticipa_y_queda_coherente():
+    llm = FakeLLM(payload={"reaccion": "Convenció con datos concretos sobre el modelo B2B2C.", "lectura": "convence",
+                           "vacios": []})
+    thread = [{"kind": "q", "cid": "dn", "text": "¿Qué modelo se habilita?"},
+              {"kind": "a", "text": "El modelo B2B2C con APIs y el Data Warehouse."}]
+    ev = _eventos(llm, "/api/follow", cid="dn", thread=thread, junta=True)
+    assert not [e for e in ev if e["type"] == "speak"]
+    d = ev[-1]["data"]
+    assert d["lectura"] == "no_convence" and "Convenció" not in d["reaccion"] and "no me convence" in d["reaccion"]
 
 
 def test_repregunta_normal_no_se_anuncia():

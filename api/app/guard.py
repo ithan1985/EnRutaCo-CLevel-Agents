@@ -192,7 +192,7 @@ def team_figures(answers: Iterable[str], limit: int = 8) -> list[str]:
 
 _CHECKLIST = [
     # (elemento, patrón que indica que el equipo ya lo dio, pregunta si falta)
-    ("herramienta", r"\b(herramienta|sistema|plataforma|software|erp|mdm|tms|crm|api|aws|azure|gcp|excel|power ?bi|"
+    ("herramienta", r"\b(herramienta|sistema|plataforma|software|erp|mdm|tms|crm|apis?|data ?warehouse|lakehouse|bi|app|aws|azure|gcp|excel|power ?bi|"
                     r"tablero|dashboard|script|orquestador|control plane)\b",
      "¿Qué herramienta o sistema concreto ejecutará lo que proponen?"),
     ("dueño", r"\b(due[ñn]o|responsable|l[ií]der|gerente|director[a]?|jefe|coordinador[a]?|rol|[aá]rea de|equipo de)\b",
@@ -363,6 +363,27 @@ def lectura_por_respuesta(respuesta: str, lectura: str) -> tuple[str, str]:
     if orden[lectura] <= orden[tope]:
         return lectura, ""
     return tope, f"Lectura ajustada a «{tope}»: la respuesta no trae cifras y casi no tiene elementos concretos."
+
+
+_ELOGIO = re.compile(r"convenc|concret|s[óo]lid|\bclar[oa]s?\b|excelente|bien (fundament|sustent|argument|plantead)|"
+                    r"me gusta|acert|robust|convincente|contundente|datos", re.I)
+_RESERVA = re.compile(r"\b(no|sin|falta|faltan|pero|sin embargo|aunque|debil|débil|insuficiente)\b", re.I)
+
+
+def reaccion_coherente(reaccion: str, lectura: str) -> str:
+    """Cuando el tope baja la lectura, la reacción del modelo puede seguir elogiando («convenció con datos
+    concretos»). Se quitan las frases de elogio sin reserva y se cierra con el juicio que corresponde a la lectura."""
+    frases = [f for f in re.split(r"(?<=[.!?])\s+", (reaccion or "").strip()) if f]
+    quedan = [f for f in frases if not _ELOGIO.search(f) or _RESERVA.search(f)][:2]
+    if lectura == "no_convence":
+        juicio = ("Pero no dieron cifras, plazos ni responsables concretos de su propuesta; así no me convence."
+                  if quedan else
+                  "Su respuesta no trae cifras, plazos ni responsables concretos de su propuesta; así no me convence.")
+    else:
+        juicio = ("Les faltan cifras y plazos concretos; me convence solo a medias." if quedan else
+                  "Su respuesta va en la dirección correcta, pero le faltan cifras y plazos concretos; "
+                  "me convence solo a medias.")
+    return " ".join([*quedan, juicio])
 
 
 def respuesta_vacia(respuesta: str) -> bool:

@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, quitar_exceso_falso, _EXCESO,
+from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, quitar_exceso_falso, reaccion_coherente, _EXCESO,
                     respuesta_vacia, sanitize, scaffold)
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, budget_info, build_messages, concern_attempts, correction_message, correction_open,
@@ -273,8 +273,13 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             # anticipa: el servidor todavía puede reintentarla o cerrarla.
             speak_key = "pregunta" if kind == "open" else ("reaccion" if req.junta else None)
 
+            # Junta: si la respuesta es vacía o el tope determinista va a bajar la lectura, la reacción del modelo se
+            # reescribe al final; no se anticipa la voz (el cliente la dice con el texto final).
+            ajuste = kind == "follow" and bool(req.junta) and (
+                respuesta_vacia(last_answer(req)) or lectura_por_respuesta(last_answer(req), "convence")[0] != "convence")
+
             async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
-                acc, stats, spoken = "", {}, speak_key is None
+                acc, stats, spoken = "", {}, speak_key is None or ajuste
                 async for piece in client.chat_stream(model, msgs, schema, st.temperature, st.num_predict, stats):
                     acc += piece
                     yield sse({"type": "token", "t": piece})
@@ -331,6 +336,7 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
                 if nota and not respuesta_vacia(last_answer(req)):
+                    data["reaccion"] = reaccion_coherente(data["reaccion"], data["lectura"])
                     data["vacios"] = (data["vacios"] + [nota])[-3:]
                 data["estado"] = estado_de(data["lectura"])
             elif kind == "follow":
