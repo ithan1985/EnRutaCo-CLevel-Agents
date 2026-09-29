@@ -34,6 +34,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .tog[aria-pressed="true"]{border-color:var(--yellow);box-shadow:inset 0 -3px 0 var(--yellow)}
 .zoom{display:flex;gap:6px}
 .zoom .tog{padding:0 14px;min-width:38px;justify-content:center}
+.timer{font-weight:700;font-size:1.05rem;min-width:54px;text-align:center;padding:4px 8px}
+.timer.warn{color:var(--warn)}.timer.bad{color:var(--bad)}
 
 .banner{margin:14px clamp(16px,3vw,40px) 0;padding:10px 14px;border-left:4px solid var(--yellow);background:var(--surface);font-size:.9rem}
 .banner.bad{border-left-color:var(--bad)}
@@ -137,6 +139,11 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .voice .av{width:36px;height:36px}
 .voice small{display:block;color:var(--muted);font-size:.74rem;line-height:1.3}
 .voice b{font-size:.86rem}
+.adv{margin-top:22px}
+.adv summary{cursor:pointer;font-size:.9rem;font-weight:700;color:var(--accent);padding:4px 0}
+.chip.done{background:var(--ok);color:var(--on-primary);border-color:var(--ok);cursor:default}
+.quienRow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.85rem;color:var(--muted)}
+.quienRow select{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px}
 </style>
 </head>
 <body>
@@ -156,6 +163,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
       <button class="tog" id="zOut" type="button" title="Reducir letra">A−</button>
       <button class="tog" id="zIn" type="button" title="Aumentar letra">A+</button>
     </div>
+    <span class="timer" id="timerTop" hidden aria-live="polite"></span>
   </div>
 </header>
 
@@ -167,6 +175,10 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <div id="current" aria-live="polite"></div>
     <div class="reply">
       <label for="answer">Respuesta del equipo</label>
+      <div class="quienRow">
+        <label for="quien">Responde:</label>
+        <select id="quien"><option value="">Sin nombre</option></select>
+      </div>
       <div class="row">
         <textarea id="answer" placeholder="Escribe, pega o dicta la respuesta del equipo. Ctrl+Enter para enviar."></textarea>
         <button class="mic" id="mic" type="button" aria-pressed="false" hidden>Dictar</button>
@@ -189,6 +201,12 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <h3>Propuesta del equipo</h3>
     <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
     <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
+    <h3>Integrantes del equipo</h3>
+    <p class="hint">Nombres separados por coma. Aparecen en «Responde:» y como chips (gris = no ha intervenido, verde = ya intervino).</p>
+    <input type="text" id="integrantes" placeholder="Ej.: Ana, Luis, Sofía" maxlength="200">
+    <div class="chips" id="chipsInt"></div>
+    <h3>Temporizador de preguntas</h3>
+    <button class="btn" id="bTimer" type="button">Iniciar 10 min</button>
     <h3>Foco de la próxima pregunta</h3>
     <input type="text" id="focus" placeholder="Ej.: exclusiones, supuestos del ROI, riesgo de migración" maxlength="120">
     <h3>Selección presupuestal (catálogo §6.2)</h3>
@@ -201,12 +219,15 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <h3>Observación y nota del docente</h3>
     <textarea id="obs" placeholder="Tu observación sobre la respuesta del equipo"></textarea>
     <div class="inl"><label for="score">Nota (0–5)</label><input id="score" type="number" min="0" max="5" step="0.1"></div>
-    <h3>Rendimiento del último turno</h3>
-    <p class="hint" id="perf">Aún no hay mediciones.</p>
-    <h3>Sala de voces</h3>
-    <p class="hint">Escucha cada voz. Se ajustan en config/personas.yaml y se aplican con «Recargar».</p>
-    <div class="voices" id="voices"></div>
-    <button class="btn" id="bReload" type="button">Recargar personajes y voces</button>
+    <details class="adv">
+      <summary>Avanzado</summary>
+      <h3>Rendimiento del último turno</h3>
+      <p class="hint" id="perf">Aún no hay mediciones.</p>
+      <h3>Sala de voces</h3>
+      <p class="hint">Escucha cada voz. Se ajustan en config/personas.yaml y se aplican con «Recargar».</p>
+      <div class="voices" id="voices"></div>
+      <button class="btn" id="bReload" type="button">Recargar personajes y voces</button>
+    </details>
     <h3>Sesión</h3>
     <button class="btn" id="bExport" type="button">Guardar sesión (.md)</button>
     <button class="btn" id="bClear" type="button">Reiniciar sesión</button>
@@ -235,7 +256,8 @@ let CFG = null;
 const S = {
   week: 8, team: "", mode: "quick", voice: true, panel: false, active: "ceo", focus: "",
   T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null, escala: 1,
-  sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false
+  sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false,
+  integrantes: [], intervinieron: new Set(), timer: {secs: 0, running: false, id: null, shown: false}
 };
 let uid = 0;
 const P = id => CFG.personas[id];
@@ -245,13 +267,15 @@ const itemById = id => S.T.find(x=>x.id===id) || null;
 
 /* ───── sesión persistente en el navegador ───── */
 function saveSession(){
-  pref("session", JSON.stringify({T:S.T, week:S.week, team:S.team, uid, ctx:$("#ctx").value, sel:[...S.sel], useBudget:S.useBudget}));
+  pref("session", JSON.stringify({T:S.T, week:S.week, team:S.team, uid, ctx:$("#ctx").value, sel:[...S.sel],
+    useBudget:S.useBudget, integrantes:S.integrantes, intervinieron:[...S.intervinieron]}));
 }
 function loadSession(){
   try{
     const d = JSON.parse(pref("session")||"null"); if (!d) return;
     S.T = d.T||[]; S.week = d.week||8; S.team = d.team||""; uid = d.uid||0;
     $("#ctx").value = d.ctx||""; S.useBudget = !!d.useBudget; (d.sel||[]).forEach(c=>S.sel.add(c));
+    S.integrantes = d.integrantes||[]; (d.intervinieron||[]).forEach(n=>S.intervinieron.add(n));
   }catch(e){}
 }
 
@@ -272,6 +296,7 @@ async function boot(){
   S.panel = pref("panel")==="1";
   const es = parseFloat(pref("escala")); setEscala(Number.isFinite(es) ? es : 1);
   $("#team").value = S.team; $("#useBudget").checked = S.useBudget;
+  $("#integrantes").value = S.integrantes.join(", ");
   if (!S.T.length) S.active = CFG.semanas[S.week-1].lead; else S.active = lastQ()?.cid || S.active;
 
   ws.addEventListener("change", ()=>{ S.week=+ws.value; if(!S.T.length) S.active=CFG.semanas[S.week-1].lead; renderAll(); saveSession(); });
@@ -281,6 +306,11 @@ async function boot(){
   $("#tPanel").addEventListener("click", ()=>{ S.panel=!S.panel; pref("panel",S.panel?1:0); applyPanel(); });
   $("#zOut").addEventListener("click", ()=>setEscala(S.escala-0.1));
   $("#zIn").addEventListener("click", ()=>setEscala(S.escala+0.1));
+  $("#integrantes").addEventListener("input", e=>{
+    S.integrantes = [...new Set(e.target.value.split(",").map(s=>s.trim()).filter(Boolean))];
+    renderIntegrantes(); saveSession();
+  });
+  $("#bTimer").addEventListener("click", ()=>{ S.timer.running ? stopTimer() : startTimer(); });
   $("#focus").addEventListener("input", e=>{ S.focus=e.target.value.trim(); });
   $("#ctx").addEventListener("input", saveSession);
   $("#useBudget").addEventListener("change", e=>{ S.useBudget=e.target.checked; saveSession(); });
@@ -301,10 +331,12 @@ async function boot(){
     if (S.busy) return; const b=e.currentTarget;
     if (S.T.length && !armed){ b.textContent="Confirmar: se pierde la sesión"; armed=setTimeout(()=>{armed=null;b.textContent="Reiniciar sesión";},4000); return; }
     if (armed){ clearTimeout(armed); armed=null; } b.textContent="Reiniciar sesión";
-    S.T=[]; S.retry=false; stopAudio(); $("#answer").value=""; setStatus(""); saveSession(); renderAll();
+    S.T=[]; S.retry=false; stopAudio(); $("#answer").value=""; setStatus("");
+    S.integrantes=[]; S.intervinieron=new Set(); $("#integrantes").value=""; renderIntegrantes();
+    saveSession(); renderAll();
   });
 
-  applyPanel(); renderBudget(); buildVoices(); setupMic(); renderAll(); pollHealth();
+  applyPanel(); renderBudget(); buildVoices(); setupMic(); renderIntegrantes(); renderAll(); pollHealth();
 }
 
 function applyPanel(){
@@ -315,6 +347,37 @@ function setEscala(v){
   S.escala = Math.min(1.3, Math.max(0.8, Math.round(v*10)/10));
   document.documentElement.style.setProperty("--escala", String(S.escala));
   pref("escala", S.escala); // pref() ya hace su propio try/catch
+}
+function renderIntegrantes(){
+  const box=$("#chipsInt"); box.replaceChildren();
+  for (const nombre of S.integrantes)
+    box.append(h("span",{class:"chip"+(S.intervinieron.has(nombre)?" done":""),text:nombre}));
+  const sel=$("#quien"), cur=sel.value;
+  sel.replaceChildren(h("option",{value:"",text:"Sin nombre"}), ...S.integrantes.map(n=>h("option",{value:n,text:n})));
+  sel.value = S.integrantes.includes(cur) ? cur : "";
+}
+function fmtTime(s){ s=Math.max(0,s); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
+function renderTimerUI(){
+  const el=$("#timerTop"), running=S.timer.running, secs=S.timer.secs;
+  el.hidden = !S.timer.shown;
+  el.textContent = fmtTime(secs);
+  el.classList.toggle("warn", running && secs>0 && secs<=120);
+  el.classList.toggle("bad", secs<=0);
+  $("#bTimer").textContent = running ? "Detener temporizador" : "Iniciar 10 min";
+}
+function startTimer(){
+  if (S.timer.id) clearInterval(S.timer.id);
+  S.timer.secs = 600; S.timer.running = true; S.timer.shown = true;
+  S.timer.id = setInterval(()=>{
+    S.timer.secs--;
+    if (S.timer.secs<=0){ S.timer.secs=0; S.timer.running=false; clearInterval(S.timer.id); S.timer.id=null; }
+    renderTimerUI();
+  }, 1000);
+  renderTimerUI();
+}
+function stopTimer(){
+  if (S.timer.id) clearInterval(S.timer.id);
+  S.timer.id=null; S.timer.running=false; renderTimerUI();
 }
 function showBanner(msg, bad, pct){
   const b = $("#banner"); b.hidden = !msg; b.className = "banner"+(bad?" bad":""); b.replaceChildren();
@@ -448,7 +511,12 @@ async function run(cid, kind, body){
 function ask(cid){ if(!canRun()) return; S.active=cid; run(cid,"open",payload(cid)); }
 function submitAnswer(){
   if(!canRun()) return; const q=lastQ(); if(!q||q.closed) return; const li=lastItem();
-  if(li.kind==="q"){ const t=$("#answer").value.trim(); if(!t) return; S.T.push({kind:"a",id:++uid,text:t}); $("#answer").value=""; }
+  if(li.kind==="q"){
+    const raw=$("#answer").value.trim(); if(!raw) return;
+    const quien=$("#quien").value;
+    if(quien){ S.intervinieron.add(quien); renderIntegrantes(); }
+    S.T.push({kind:"a",id:++uid,text:quien?`${quien}: ${raw}`:raw}); $("#answer").value="";
+  }
   else if(!S.retry) return;
   run(q.cid,"follow",payload(q.cid,{thread:threadList()}));
 }
@@ -618,6 +686,11 @@ function exportSession(){
   const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${S.team||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`,""];
   const ctx=$("#ctx").value.trim(); if(ctx) out.push("## Propuesta del equipo (resumen del docente)",ctx,"");
   if(S.useBudget){ const cat=CFG.catalogo; out.push("## Selección presupuestal",`Total: $${fmt(b.total)}M COP. ${b.estado}`,`Incluidos: ${cat.filter(x=>S.sel.has(x.c)).map(x=>x.c).join(", ")}`,`Excluidos: ${cat.filter(x=>!S.sel.has(x.c)).map(x=>x.c).join(", ")||"ninguno"}`,""); }
+  if(S.integrantes.length){
+    const si=S.integrantes.filter(n=>S.intervinieron.has(n)), no=S.integrantes.filter(n=>!S.intervinieron.has(n));
+    out.push("## Integrantes", `Integrantes que intervinieron: ${si.join(", ")||"ninguno"}`,
+      `Integrantes que no intervinieron: ${no.join(", ")||"ninguno"}`, "");
+  }
   out.push("## Intercambios"); let n=0;
   for(const x of S.T){
     if(x.kind==="q"){ n++; const p=P(x.cid);
