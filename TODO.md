@@ -97,3 +97,27 @@ Sesión real por API (`POST /api/ask` y `/api/follow`, SSE), `cid="ti"` (Andrés
 - Publicación del proyecto con enlace público (más allá del repo en GitHub).
 - Considerar una salvaguarda determinista para la reacción repetida palabra por palabra entre turnos.
 - Considerar una verificación (aunque sea heurística) de cifras que el modelo menciona sin que estén en el hilo ni en el caso.
+
+## Junta del 29 de septiembre (sustentación final en línea)
+
+Operación y despliegue: [`docs/JUNTA.md`](docs/JUNTA.md) y `scripts/desplegar_aws.sh`.
+
+### Implementado (verificado con el Ollama simulado y el navegador; sin modelo real)
+
+| Tema | Implementación |
+|---|---|
+| Mismas condiciones para todos los grupos | Modo junta: una pregunta por miembro en orden fijo (TI → Servicio al Cliente → CFO → Negocio → Operaciones → CEO), sin repreguntas y con focos estándar |
+| Apertura y cierre | Escenas del CEO con texto fijo (sin modelo). Si la voz falla, el texto queda en pantalla y la junta avanza |
+| Evaluación | Prompt y esquema propios en el servidor (`junta: true`); `coherencia_lectura` alinea la lectura con la reacción; nota de plazos contradictorios también en junta |
+| Pregunta confusa | «Cambiar la pregunta» mientras el grupo no haya respondido; la descartada no va al acta |
+| Nota | Propuesta al evaluar las 6 respuestas (solo en el panel, no en el escenario compartido); nota final del docente con «Usar la nota propuesta» |
+| Acta | Nota final, modalidad, tabla resumen (miembro, bloque, quién respondió, lectura, puntos), una sección por miembro y marca de junta incompleta |
+| Pantalla compartida | «Ocultar notas del docente» oculta propuesta, «Dónde presionar», lectura, calificación, observaciones y Avanzado |
+| Latencia | `/api/warmup` al terminar la apertura; evento `speak` con el texto ya saneado (la voz no espera las notas ni se corrige en voz alta); `load()` con el mismo `num_ctx` de los turnos |
+| Robustez | Temporizador con hora de fin (sobrevive a recargas); cambio de grupo y reinicio dejan la junta limpia |
+
+### Pendientes
+
+- Validar con el modelo real en AWS: lectura de las 6 evaluaciones (3b y 7b), tiempo de la primera pregunta con y sin precalentamiento, y que la voz anticipada coincida con el texto final.
+- Calibrar la regla de nota con las actas reales de la sesión (¿3,5 para «a medias» es justo?).
+- Registrar en el acta la duración real de la exposición y de las preguntas.

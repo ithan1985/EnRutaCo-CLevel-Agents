@@ -1,0 +1,2 @@
+# Scripts de shell con fin de línea LF (se ejecutan en WSL y en la instancia Linux)
+*.sh text eol=lf

@@ -78,7 +78,8 @@ En CPU la velocidad la limita el ancho de banda de la RAM y la lectura del promp
 
 - El prompt pone primero lo que comparten todos los personajes (~80 %), así que Ollama reutiliza esa parte al cambiar de personaje.
 - El modo Rápido omite las notas del docente (`LLM_NOTES_IN_QUICK=0`) y responde en la mitad de tiempo.
-- El modelo rápido se precarga al arrancar; `OLLAMA_NUM_PARALLEL=1` y `OLLAMA_MAX_LOADED_MODELS=2` dejan ambos modelos en memoria.
+- El modelo rápido se precarga al arrancar con el mismo `num_ctx` de los turnos. `OLLAMA_NUM_PARALLEL=1` y `OLLAMA_MAX_LOADED_MODELS=1` mantienen un solo modelo en memoria: cambiar de modo recarga el modelo.
+- En modo junta, al terminar la apertura del CEO la interfaz llama a `/api/warmup`: el modelo queda cargado y con el prompt de la primera pregunta en caché mientras el grupo expone.
 - Semanas 1–4 usan un prompt de ~1.400 tokens.
 
 Mide tu equipo real antes de clase: `make bench` (carga, lectura del prompt, generación y beneficio de la caché). El panel docente muestra las mismas métricas de cada turno.
@@ -114,6 +115,7 @@ Notas de ajuste:
 3. **Dar la palabra** → el agente pregunta con su voz. El equipo responde (escrito o dictado) → **Enviar respuesta** → reacción, lectura en personaje y repregunta o cierre.
 4. **Intervención cruzada** hace que un rival natural del que acaba de hablar intervenga desde su conflicto (CFO contra CEO y TI, TI contra Negocio, Operaciones contra TI…). Definido en `rivales` y `conflicto`.
 5. Tus observaciones y notas quedan en el panel; **Guardar sesión** exporta un `.md`. La sesión se conserva al recargar la página.
+6. **Modo junta** (sustentación final): una pregunta por miembro en orden fijo, apertura y cierre del CEO, propuesta de nota y acta con tabla resumen. Guía de operación y despliegue en AWS: [`docs/JUNTA.md`](docs/JUNTA.md).
 
 ## API
 
@@ -121,7 +123,8 @@ Notas de ajuste:
 |---|---|---|
 | GET | `/api/config` | Personajes, semanas y catálogo (sin prompts) |
 | GET | `/api/health` | Ollama, descarga de modelos y voces |
-| POST | `/api/ask` · `/api/follow` | Pregunta / reacción (SSE: `token`, `done`, `error`) |
+| POST | `/api/ask` · `/api/follow` | Pregunta / reacción (SSE: `token`, `speak`, `retry`, `done`, `error`). `speak` trae el texto que se dirá, ya saneado; `follow` acepta `junta: true` |
+| POST | `/api/warmup` | Carga el modelo y precalienta el prompt de la próxima pregunta (misma petición que `/api/ask`) |
 | POST | `/api/tts` | `{cid, text}` → `audio/wav` |
 | GET | `/api/tts/sample/{cid}` | Muestra de voz con la frase ancla |
 | GET | `/api/voices` | Perfiles y hablantes por modelo |

@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .claude/
+# Datos de estudiantes y llaves: nunca al repositorio
+grupos*.json
+acta-*.md
+*.pem
