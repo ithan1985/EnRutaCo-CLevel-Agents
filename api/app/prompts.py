@@ -114,6 +114,18 @@ def similar(a: str, b: str) -> bool:
     return jac >= 0.6 or SequenceMatcher(None, na, nb).ratio() >= 0.75
 
 
+_VACIAS = {"de", "la", "el", "los", "las", "y", "en", "que", "a", "del", "con", "por", "para", "su", "sus", "se", "un", "una",
+           "como", "no", "al", "lo", "o", "es", "e"}
+
+
+def similar_junta(a: str, b: str) -> bool:
+    """Junta: dos preguntas de miembros distintos se repiten si comparten casi la mitad del vocabulario de contenido
+    (el modelo pequeño reusa el marco «adopción progresiva de X en los años 1 y 2…» cambiando solo el final)."""
+    wa = {w for w in _norm(a).split() if w not in _VACIAS and len(w) > 2}
+    wb = {w for w in _norm(b).split() if w not in _VACIAS and len(w) > 2}
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= 0.5
+
+
 def is_confused(answer: str) -> bool:
     return bool(_CONFUSION.search(answer or ""))
 
@@ -248,6 +260,13 @@ def asked_block(req: Any, personas: dict[str, Any]) -> str:
     qs = [a for a in req.asked if a.text][-10:]
     if not qs:
         return ""
+    if getattr(req, "junta", False):
+        # Junta: el modelo pequeño copia el texto de las preguntas previas como plantilla. Solo se listan los roles
+        # que ya preguntaron; el foco propio de cada miembro garantiza la diversidad.
+        quienes = ", ".join(dict.fromkeys(
+            f"{personas[a.cid]['corto']} ({personas[a.cid]['cargo']})" for a in qs if a.cid in personas))
+        return ("MIEMBROS QUE YA PREGUNTARON EN ESTA JUNTA: " + quienes + ". Cada miembro pregunta solo desde su propio "
+                "rol y foco; no retomes sus temas, no uses su estructura de frase y no empieces con «¿Cómo garantizan…».")
     return "PREGUNTAS YA FORMULADAS EN LA SESIÓN (no repitas su ángulo)\n" + "\n".join(
         f"- {personas[a.cid]['corto'] if a.cid in personas else 'Comité'}: {a.text}" for a in qs
     )

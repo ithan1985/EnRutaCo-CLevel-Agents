@@ -99,3 +99,23 @@ def test_api_junta_quita_exceso_de_techo_falso():
     with make_client(llm).stream("POST", "/api/follow", json=body(cid="cfo", thread=thread, junta=True, budget=["E2"])) as r:
         d = read_sse(r)[-1]["data"]
     assert "exceso" not in d["reaccion"] and "−7,8 %" in d["reaccion"] and not any("exceso del techo" in v for v in d["vacios"])
+
+
+def test_similar_junta_detecta_marco_copiado_y_respeta_preguntas_distintas():
+    from app.prompts import similar_junta
+    a = ("¿Cómo garantizan que la adopción progresiva de ERP, CRM y CDP en los años 1 y 2 del roadmap no afecte el ROI "
+         "y el payback, manteniendo el techo presupuestal y la escalabilidad del TMS y la app móvil?")
+    b = ("¿Cómo garantizan que la adopción progresiva de ERP, CRM y CDP en los años 1 y 2 del roadmap no altere la "
+         "estructura de datos críticos como OTIF, SLA, manteniendo la escalabilidad del TMS y la app móvil?")
+    assert similar_junta(a, b)
+    assert not similar_junta("¿Cuál es el modelo de ROI para el año 3?",
+                             "¿Qué modelo de negocio B2B2C se habilita en 12 a 18 meses?")
+
+
+def test_asked_block_en_junta_no_muestra_textos_previos():
+    from types import SimpleNamespace as NS
+    from app.prompts import asked_block
+    personas = {"ti": {"corto": "Andrés", "cargo": "Director de TI"}}
+    req = NS(junta=True, asked=[NS(cid="ti", text="¿Cómo garantizan la adopción progresiva de ERP?")])
+    out = asked_block(req, personas)
+    assert "Andrés (Director de TI)" in out and "adopción progresiva" not in out

@@ -32,7 +32,7 @@ from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, 
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, budget_info, build_messages, concern_attempts, correction_message, correction_open,
                       estado_de,
-                      follow_count, is_confused, last_answer, prior_questions, similar, thread_terms)
+                      follow_count, is_confused, last_answer, prior_questions, similar, similar_junta, thread_terms)
 from .tts import build_engine
 from .tts.common import LRU
 
@@ -302,7 +302,7 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             if kind == "open" and req.junta and not req.cross_from:
                 # Contagio: el modelo pequeño copia la pregunta de otro miembro. Un reintento con corrección.
                 otra = next((a for a in req.asked if a.text and a.cid and a.cid != req.cid
-                             and similar(data["pregunta"], a.text)), None)
+                             and (similar(data["pregunta"], a.text) or similar_junta(data["pregunta"], a.text))), None)
                 if otra:
                     log.info("Pregunta de %s repite la de %s; se reintenta.", req.cid, otra.cid)
                     yield sse({"type": "retry", "reason": "repeticion"})
@@ -330,7 +330,7 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                         data["vacios"] = (data["vacios"] + ["Se quitó de la reacción una afirmación falsa: el total está dentro del techo."])[-3:]
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
-                if nota:
+                if nota and not respuesta_vacia(last_answer(req)):
                     data["vacios"] = (data["vacios"] + [nota])[-3:]
                 data["estado"] = estado_de(data["lectura"])
             elif kind == "follow":
