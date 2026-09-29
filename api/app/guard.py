@@ -11,6 +11,7 @@ no llama al modelo, así que no añade carga de CPU ni latencia apreciable.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Iterable
 
 # ───────────── Registro ─────────────
@@ -49,14 +50,29 @@ def fix_register(text: str) -> str:
     return _REG_RE.sub(lambda m: _match_case(m.group(0), _REGISTRO[m.group(0).lower()]), text or "")
 
 
-def one_question(text: str) -> str:
-    """Deja una sola pregunta: quita el prefijo de hablante, lo que sigue al primer '?' y la segunda pregunta encadenada."""
+def _fold(s: str) -> str:
+    """minúsculas y sin tildes, para comparar términos sin depender de acentos."""
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def one_question(text: str, keep_chain_terms: Iterable[str] | None = None) -> str:
+    """Deja una sola pregunta: quita el prefijo de hablante, lo que sigue al primer '?' y la segunda pregunta
+    encadenada — salvo que 'keep_chain_terms' indique que la segunda parte conecta con un hilo previo (p. ej.
+    una intervención cruzada que retoma lo dicho por otro personaje); en ese caso se conserva completa, con un
+    tope de 45 palabras en vez del recorte habitual."""
     t = _SPEAKER.sub("", (text or "").strip())
     if "?" in t:
         t = t[: t.index("?") + 1]
     m = _CHAIN.search(t)
     if m and t.endswith("?") and len(t[: m.start()].split()) >= 4:  # la primera parte ya es una pregunta completa
-        t = t[: m.start()].rstrip(" ,;") + "?"
+        conecta = bool(keep_chain_terms) and any(term in _fold(t[m.end():]) for term in keep_chain_terms)
+        if conecta:
+            words = t.split()
+            if len(words) > 45:
+                t = " ".join(words[:45]).rstrip(" ,;") + "?"
+        else:
+            t = t[: m.start()].rstrip(" ,;") + "?"
     if t.endswith("?") and "¿" not in t:
         t = "¿" + t[0].lower() + t[1:]
     return t.strip()
@@ -74,7 +90,45 @@ def clean_vacios(items: Iterable[str]) -> list[str]:
     return [v for v in items if v.strip() and not any(p in v.lower() for p in _TEMPLATE_VACIOS)]
 
 
-def sanitize(kind: str, data: dict[str, Any]) -> dict[str, Any]:
+# Negación seguida (en la misma oración) de un patrón del _CHECKLIST: candidato a "reclamo de vacío falso".
+_NEGACION = re.compile(r"\b(no\s|sin\s|falta[n]?\s|nadie\s|ning[uú]n\w*\s)", re.I)
+
+
+def strip_false_gaps(reaccion: str, dados: Iterable[tuple[str, str]] | None) -> str:
+    """Quita de 'reaccion' oraciones que reclaman como faltante un elemento que el equipo ya dio en el hilo
+    (ver datos_ya_dados). No se aplica a 'métrica y umbral': su patrón es solo un dígito y es demasiado débil
+    para borrar texto del modelo con esa sola señal."""
+    if not dados or not reaccion:
+        return reaccion
+    nombres = {n for n, _ in dados if n != "métrica y umbral"}
+    if not nombres:
+        return reaccion
+    patrones = [pat for n, pat, _ in _CHECKLIST if n in nombres]
+    frases = re.split(r"(?<=[.!?])\s+", reaccion.strip())
+    out = [f for f in frases if not (_NEGACION.search(f) and any(re.search(p, f, re.I) for p in patrones))]
+    return " ".join(out).strip()
+
+
+def trim_reaccion(text: str, max_frases: int = 2) -> str:
+    """Recorta 'reaccion' a máximo 2 oraciones, priorizando las que citan cifras o señalan una contradicción
+    (para no perder lo más útil al acortar reacciones largas de ~3 frases)."""
+    frases = [f.strip() for f in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if f.strip()]
+    if len(frases) <= max_frases:
+        return " ".join(frases)
+    prioridad = [f for f in frases if _NUM.search(f) or re.search(r"contradic|no cuadra|no coincide", f, re.I)]
+    elegidas = set((prioridad + [f for f in frases if f not in prioridad])[:max_frases])
+    return " ".join(f for f in frases if f in elegidas)
+
+
+def fix_reaccion(s: str, dados: Iterable[tuple[str, str]] | None = None) -> str:
+    t = strip_questions(fix_register(s))
+    t = strip_false_gaps(t, dados) or t
+    t = trim_reaccion(t) or t
+    return t or s
+
+
+def sanitize(kind: str, data: dict[str, Any], keep_chain_terms: Iterable[str] | None = None,
+             dados: Iterable[tuple[str, str]] | None = None) -> dict[str, Any]:
     """Aplica todas las correcciones deterministas. Registra en data['ajustes'] qué se corrigió (para el docente)."""
     ajustes: list[str] = []
 
@@ -86,9 +140,9 @@ def sanitize(kind: str, data: dict[str, Any]) -> dict[str, Any]:
             ajustes.append(key)
 
     if kind == "open":
-        fix("pregunta", lambda s: one_question(fix_register(s)))
+        fix("pregunta", lambda s: one_question(fix_register(s), keep_chain_terms))
     else:
-        fix("reaccion", lambda s: strip_questions(fix_register(s)) or s)
+        fix("reaccion", lambda s: fix_reaccion(s, dados))
         if data.get("seguimiento"):
             fix("seguimiento", lambda s: one_question(fix_register(s)))
         before = list(data.get("vacios", []))
@@ -133,6 +187,40 @@ _CHECKLIST = [
 ]
 
 
+def datos_ya_dados(answers: Iterable[str]) -> list[tuple[str, str]]:
+    """(elemento, fragmento) de los elementos del _CHECKLIST que el equipo ya dio en el hilo, en el orden en que
+    aparecen. Para que el modelo (y el respaldo determinista de strip_false_gaps) no reclame como faltante algo
+    que ya está en el hilo — p. ej. "el responsable será el líder de TI" para el elemento 'dueño'."""
+    found: dict[str, str] = {}
+    for a in answers:
+        for frag in re.split(r"(?<=[.;])\s+|,\s+(?=[a-záéíóúñ])", a or ""):
+            frag = frag.strip(" .;")
+            if not frag:
+                continue
+            for nombre, pat, _ in _CHECKLIST:
+                if nombre in found:
+                    continue
+                if re.search(pat, frag, re.I) or (nombre == "herramienta" and re.search(r"\b[A-Z]{2,}\b", frag)):
+                    found[nombre] = frag
+    return list(found.items())
+
+
+_TOPIC_TAIL = re.compile(r"\b(en|durante|sobre|para|con)\s+(.+)$", re.I)
+
+
+def _topic(prev_question: str) -> str:
+    """Frase final de 'prev_question' (el objeto de la preocupación), para que la plantilla de andamiaje no
+    pierda el tema al reformular (p. ej. "la fase de convivencia"). Solo si hay un conector claro (en/durante/
+    sobre/para/con): sin eso, es mejor no tocar la pregunta que adivinar un tema con las últimas palabras."""
+    q = prev_question.strip(" ¿?")
+    m = None
+    for mm in _TOPIC_TAIL.finditer(q):
+        m = mm  # la última coincidencia: la más cercana al final de la pregunta
+    if m and 1 <= len(m.group(2).split()) <= 8:
+        return m.group(2).strip(" ,.")
+    return ""
+
+
 def scaffold(prev_question: str, answers: Iterable[str]) -> dict[str, Any]:
     """Reacción y repregunta guiadas cuando el equipo no entiende y el modelo solo repite su pregunta."""
     text = " ".join(answers)
@@ -140,6 +228,9 @@ def scaffold(prev_question: str, answers: Iterable[str]) -> dict[str, Any]:
              if re.search(pat, text, re.I) or (n == "herramienta" and re.search(r"\b[A-Z]{2,}\b", text))]
     falta = [(n, q) for n, _, q in _CHECKLIST if n not in tiene]
     nombre, pregunta = falta[0] if falta else ("detalle", "¿Qué dato concreto sustenta su propuesta?")
+    tema = _topic(prev_question)
+    if tema and _fold(tema) not in _fold(pregunta):
+        pregunta = pregunta.rstrip("?") + f" {tema}?"
     base = f"Les aclaro a qué me refería con «{prev_question.strip(' ¿?')}»: para darlo por concreto necesito " \
            "herramienta, dueño, cadencia, métrica con umbral e indicador."
     base += f" De eso ya tengo {', '.join(tiene)}; " if tiene else " "
@@ -190,3 +281,27 @@ def duration_contradiction(answers: Iterable[str]) -> str:
     if hi[0] >= lo[0] * 4 and hi[0] - lo[0] >= 5:
         return f'mencionaron «{lo[1]}» y también «{hi[1]}»: los plazos no cuadran'
     return ""
+
+
+# ───────────── Respuestas vagas ─────────────
+
+_VAGUE_PHRASES = re.compile(
+    r"\bbuenas pr[aá]cticas\b|\bseg[uú]n el est[aá]ndar\b|\bseg[uú]n los est[aá]ndares\b|"
+    r"\blo definiremos despu[eé]s\b|\blo veremos despu[eé]s\b|\bm[aá]s adelante lo (definimos|vemos)\b",
+    re.I,
+)
+
+
+def is_vague(answer: str) -> bool:
+    """True si la respuesta no aporta nada nuevo: una frase genérica típica ("buenas prácticas", "según el
+    estándar"...), o bien corta (≤12 palabras), sin cifras y sin ningún elemento del _CHECKLIST."""
+    a = (answer or "").strip()
+    if not a:
+        return True
+    if _VAGUE_PHRASES.search(a):
+        return True
+    if len(a.split()) > 12:
+        return False
+    sin_cifras = not _NUM.search(a)
+    sin_concrecion = not any(re.search(pat, a, re.I) for nombre, pat, _ in _CHECKLIST if nombre != "métrica y umbral")
+    return sin_cifras and sin_concrecion

@@ -10,9 +10,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
-from .guard import duration_contradiction, team_figures
+from .guard import datos_ya_dados, duration_contradiction, is_vague, team_figures
 
 MAX_WORDS_Q = 35
 MAX_FOLLOWS = 6          # tope duro de repreguntas por hilo (salvaguarda; el cierre normal es por preocupación)
@@ -269,6 +269,13 @@ def follow_count(req: Any) -> int:
     return sum(1 for t in req.thread if t.kind == "q" and t.follow)
 
 
+def thread_terms(req: Any, personas: dict[str, Any]) -> set[str]:
+    """Palabras significativas (≥4 letras, sin tildes) del hilo actual. Sirve para que una intervención cruzada
+    que retoma el tema del hilo previo no se recorte por error como si fuera una pregunta encadenada suelta."""
+    text = _norm(thread_text(req, personas))
+    return {w for w in text.split() if len(w) >= 4}
+
+
 # ───────────── Esquemas de salida (Ollama structured outputs) ─────────────
 
 SCHEMA_OPEN = {
@@ -343,6 +350,12 @@ def follow_task(p: dict[str, Any], req: Any) -> str:
             f"- POSIBLE CONTRADICCIÓN: {contradiccion}. Tu repregunta debe cuestionar directamente esa "
             "incoherencia de plazos, no otro tema."
         )
+    dados = datos_ya_dados(t.text for t in req.thread if t.kind == "a")
+    if dados:
+        reglas.append(
+            "- DATOS YA DADOS POR EL EQUIPO (no los reclames como faltantes): "
+            + "; ".join(f"{nombre}: «{frag}»" for nombre, frag in dados)
+        )
     task = [
         f"TAREA\nEl equipo respondió. Primero, en 'reaccion', reconoce en 1-2 frases como {p['corto']} lo que sí resolvió "
         "(si algo) y lo que falta, sin repetir lo que el equipo ya dijo ni dar la solución; NO incluyas aquí tu repregunta. "
@@ -354,6 +367,13 @@ def follow_task(p: dict[str, Any], req: Any) -> str:
             "ANDAMIAJE: el equipo dice que no entiende tu pregunta o te pide una sugerencia. NO la repitas. En 'reaccion' "
             f"aclara en qué consiste lo que esperas, descomponiéndolo en sus partes (por ejemplo: {CONCRECION}), sin dar la "
             "respuesta. En 'seguimiento' pregunta solo por la primera de esas partes."
+        )
+    elif is_vague(ans) and intentos < MAX_ATTEMPTS:
+        task.append(
+            "RESPUESTA VACÍA: la última respuesta no aporta datos (sin cifras ni elementos concretos, o una frase "
+            "genérica como «buenas prácticas»). No cambies de tema: insiste en la MISMA preocupación de tu pregunta "
+            "anterior y dilo explícitamente en 'reaccion' (esto no cuenta como repetirte: sigues sobre la misma "
+            "brecha porque el equipo no la resolvió)."
         )
     if intentos >= MAX_ATTEMPTS or n >= MAX_FOLLOWS:
         task.append(
@@ -374,10 +394,18 @@ def follow_task(p: dict[str, Any], req: Any) -> str:
     return "\n".join(reglas) + "\n\n" + "\n".join(task)
 
 
-def correction_message(req: Any, repetida: str) -> str:
-    """Instrucción que el servidor reenvía cuando el modelo repitió una repregunta anterior."""
-    base = (f"CORRECCIÓN OBLIGATORIA: tu repregunta «{repetida}» repite una que ya hiciste en este hilo. Genera de nuevo "
-            "el JSON completo con una repregunta distinta que avance.")
+def correction_message(req: Any, repetida: str, other_cid: Optional[str] = None,
+                       personas: Optional[dict[str, Any]] = None) -> str:
+    """Instrucción que el servidor reenvía cuando el modelo repitió una repregunta anterior — propia (mismo
+    hilo) o de otro personaje en la sesión (contagio: la repitió en una intervención cruzada)."""
+    if other_cid and personas and other_cid in personas:
+        nombre = personas[other_cid]["corto"]
+        base = (f"CORRECCIÓN OBLIGATORIA: tu repregunta «{repetida}» ya la hizo {nombre}, otro miembro del Comité, "
+                "en esta sesión. Genera de nuevo el JSON completo con una repregunta distinta, formulada desde tu "
+                "propio rol y tu propia preocupación, no la de otro personaje.")
+    else:
+        base = (f"CORRECCIÓN OBLIGATORIA: tu repregunta «{repetida}» repite una que ya hiciste en este hilo. Genera "
+                "de nuevo el JSON completo con una repregunta distinta que avance.")
     if is_confused(last_answer(req)):
         return base + (" El equipo dijo que no entiende: descompón lo que esperas en partes concretas "
                        f"({CONCRECION}) y pregunta solo por la primera.")

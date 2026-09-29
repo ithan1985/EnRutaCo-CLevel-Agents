@@ -9,10 +9,11 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings, Store
 from app.llm import LLMError
-from app.guard import duration_contradiction, fix_register, one_question, sanitize, scaffold, team_figures
+from app.guard import (datos_ya_dados, duration_contradiction, fix_register, is_vague, one_question, sanitize,
+                       scaffold, strip_false_gaps, team_figures, trim_reaccion)
 from app.main import create_app
 from app.prompts import (MAX_FOLLOWS, budget_info, budget_text, build_messages, build_system, catalog_text,
-                         concern_attempts, fmt, is_confused, similar)
+                         concern_attempts, correction_message, fmt, is_confused, similar, thread_terms)
 from app.tts.common import normalize_es, pcm_to_wav
 from app.tts.piper_engine import hf_files, resolve_speaker, PiperEngine
 
@@ -155,9 +156,9 @@ def _a(text):
     return SimpleNamespace(kind="a", cid=None, text=text, follow=False, reaccion="")
 
 
-def _req(thread, cid="ti", week=8):
-    return SimpleNamespace(cid=cid, week=week, team="", context="", focus="", budget=None, asked=[], thread=thread,
-                           cross_from=None)
+def _req(thread, cid="ti", week=8, asked=None, cross_from=None):
+    return SimpleNamespace(cid=cid, week=week, team="", context="", focus="", budget=None, asked=asked or [],
+                           thread=thread, cross_from=cross_from)
 
 
 LOOP_Q = "¿Cómo podríamos definir los planes de implementación sin afectar la eficiencia operacional actual?"
@@ -238,6 +239,66 @@ def test_andamiaje_pregunta_por_lo_que_falta():
     assert g["seguimiento"] == "¿Qué cargo concreto será el dueño de eso?"
     g2 = scaffold("¿P?", ["No sé."])
     assert g2["seguimiento"] == "¿Qué herramienta o sistema concreto ejecutará lo que proponen?"
+
+
+def test_f_andamiaje_conserva_el_tema():
+    # Sin tema (F): la plantilla vieja perdía el objeto de la preocupación ("¿Con qué frecuencia se revisará?"
+    # a secas). Con un conector claro en la pregunta previa, ahora lo conserva. Herramienta y dueño ya están
+    # dados, así que la siguiente plantilla que falta es la de cadencia.
+    g = scaffold("¿Cómo garantizan la aplicación continua de esas políticas durante la fase de convivencia?",
+                 ["Con un MDM sobre AWS y el líder de TI como responsable."])
+    assert g["seguimiento"] == "¿Con qué frecuencia se revisará la fase de convivencia?"
+    # Sin conector: no inventa un tema (evita ruido, ver test_andamiaje_pregunta_por_lo_que_falta).
+    g2 = scaffold("¿Cuál es el criterio?", ["No sé."])
+    assert g2["seguimiento"] == "¿Qué herramienta o sistema concreto ejecutará lo que proponen?"
+
+
+def test_a_datos_ya_dados_y_respaldo_en_reaccion():
+    # A: el 7b reclamó "no especificaron el responsable" cuando el equipo ya había dado un dueño.
+    dados = datos_ya_dados(["El responsable será el líder de TI."])
+    assert ("dueño", "El responsable será el líder de TI") in dados
+
+    u = build_messages("follow", STORE, _req([_q("P1", follow=False),
+                                              _a("El responsable será el líder de TI.")]))[0][1]["content"]
+    assert "DATOS YA DADOS POR EL EQUIPO" in u and "líder de TI" in u
+
+    # Respaldo determinista: si el modelo igual reclama el vacío, la frase se quita de 'reaccion'.
+    reaccion = "No especificaron el responsable del proceso. Además, el plazo sigue sin cifra."
+    limpia = strip_false_gaps(reaccion, dados)
+    assert "no especificaron el responsable" not in limpia.lower()
+    assert "el plazo sigue sin cifra" in limpia.lower()
+
+    d = sanitize("follow", {"reaccion": reaccion, "seguimiento": "¿Y el plazo?", "lectura": "no_convence",
+                            "vacios": []}, dados=dados)
+    assert "no especificaron el responsable" not in d["reaccion"].lower()
+
+
+def test_d_insiste_ante_respuesta_vaga():
+    assert is_vague("Con buenas prácticas de gobierno de datos.")
+    assert not is_vague("Migramos 120.000 registros en 3 fases de 2 meses.")
+
+    thread = [_q("¿Cuál es el costo total de la migración?", follow=False),
+              _a("Con buenas prácticas de gobierno de datos.")]
+    u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
+    assert "RESPUESTA VACÍA" in u and "insiste en la MISMA preocupación" in u
+
+
+def test_e_reacciones_largas_se_recortan_a_dos_frases():
+    larga = ("Reconozco que dieron el presupuesto de $180M. Sin embargo, mencionaron 3 fases de 2 meses y luego "
+             "un fin de semana, lo que no cuadra. Además el tono general del plan es razonable. Por último, "
+             "valoro que hayan citado 120.000 registros.")
+    d = sanitize("follow", {"reaccion": larga, "seguimiento": "¿Cuál de los dos plazos es real?",
+                            "lectura": "no_convence", "vacios": []})
+    frases = [f for f in d["reaccion"].split(". ") if f]
+    assert len(frases) <= 2
+    # Prioriza cifras/contradicción sobre relleno ("el tono general del plan es razonable").
+    assert "$180M" in d["reaccion"] or "no cuadra" in d["reaccion"]
+    assert "tono general" not in d["reaccion"]
+
+
+def test_trim_reaccion_no_toca_reacciones_cortas():
+    assert trim_reaccion("Una sola frase.") == "Una sola frase."
+    assert trim_reaccion("Frase uno. Frase dos.") == "Frase uno. Frase dos."
 
 
 def test_detecta_confusion_y_similitud():
@@ -351,6 +412,43 @@ def test_confusion_mas_repeticion_usa_andamiaje_sin_segunda_llamada():
     assert len(llm.calls) == 1 and "retry" not in [e["type"] for e in ev]
     assert d["guia"] == "andamiaje" and d["cierre"] == "" and d["seguimiento"].endswith("?")
     assert "Les aclaro a qué me refería" in d["reaccion"] and not similar(d["seguimiento"], LOOP_Q)
+
+
+def test_b_contagio_entre_personajes_compara_con_asked():
+    # Claudia (cs) a punto de repetir casi textual una pregunta que ya hizo Andrés (ti) en la sesión, aunque no
+    # está en SU hilo (thread) sino en 'asked' (preguntas de toda la sesión).
+    asked = [{"cid": "ti", "text": "¿Con qué frecuencia se revisará el proceso de transición durante la fase de convivencia?"}]
+    thread = [{"kind": "q", "cid": "cs", "text": "P1"}, {"kind": "a", "text": "R1"}]
+    rep = {"reaccion": "Entiendo el punto.",
+           "seguimiento": "¿Con qué frecuencia se revisará el proceso de transición durante la fase de convivencia?",
+           "lectura": "no_convence", "vacios": []}
+    ok = {"reaccion": "Registro lo dicho.", "seguimiento": "¿Cómo afecta esto a la experiencia del cliente?",
+          "lectura": "parcial", "vacios": []}
+    llm = FakeLLM(payload=[rep, ok])
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="cs", asked=asked, thread=thread)) as r:
+        ev = read_sse(r)
+    assert [e["type"] for e in ev].count("retry") == 1
+    corr = llm.calls[1]["messages"][-1]["content"]
+    assert "ya la hizo" in corr and "otro miembro del Comité" in corr and "propio rol" in corr
+    d = ev[-1]["data"]
+    assert d["seguimiento"] == "¿Cómo afecta esto a la experiencia del cliente?"
+
+
+def test_c_intervencion_cruzada_conserva_pregunta_encadenada():
+    thread = [{"kind": "q", "cid": "ti", "text": "¿Cómo garantizan la continuidad durante la fase de convivencia?",
+               "follow": False},
+              {"kind": "a", "text": "Con control incremental."}]
+    sucia = {"pregunta": "¿Cómo evalúan el riesgo del proceso y cómo afecta a la fase de convivencia?",
+             "evalua": "", "senales": [], "trampa": ""}
+    with make_client(FakeLLM(payload=dict(sucia))).stream(
+            "POST", "/api/ask", json=body(cid="cs", thread=thread, cross_from="ti")) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["pregunta"] == "¿Cómo evalúan el riesgo del proceso y cómo afecta a la fase de convivencia?"
+
+    # Sin cross_from no hay contexto de hilo previo que defender: se recorta como de costumbre.
+    with make_client(FakeLLM(payload=dict(sucia))).stream("POST", "/api/ask", json=body(cid="cs", thread=thread)) as r:
+        d2 = read_sse(r)[-1]["data"]
+    assert d2["pregunta"] == "¿Cómo evalúan el riesgo del proceso?"
 
 
 def test_open_se_sanea_en_la_api():

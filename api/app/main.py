@@ -25,10 +25,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import duration_contradiction, sanitize, scaffold
+from .guard import datos_ya_dados, duration_contradiction, sanitize, scaffold
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
-                      follow_count, is_confused, last_answer, prior_questions, similar)
+                      follow_count, is_confused, last_answer, prior_questions, similar, thread_terms)
 from .tts import build_engine
 from .tts.common import LRU
 
@@ -114,10 +114,20 @@ CIERRES = {
 }
 
 
-def repeated(data: dict[str, Any], req: "TurnReq") -> Optional[str]:
-    """Devuelve la pregunta previa que la repregunta repite, o None."""
+def repeated(data: dict[str, Any], req: "TurnReq") -> Optional[tuple[str, Optional[str]]]:
+    """Devuelve (pregunta_previa, cid_de_otro_personaje_o_None) que la repregunta repite, o None. Compara con el
+    hilo actual y también con req.asked (toda la sesión, cualquier personaje) para detectar el contagio entre
+    personajes que puede darse en una intervención cruzada."""
     seg = data.get("seguimiento", "")
-    return next((q for q in prior_questions(req) if seg and similar(seg, q)), None)
+    if not seg:
+        return None
+    prev = next((q for q in prior_questions(req) if similar(seg, q)), None)
+    if prev:
+        return (prev, None)
+    other = next((a for a in req.asked if a.text and a.cid and a.cid != req.cid and similar(seg, a.text)), None)
+    if other:
+        return (other.text, other.cid)
+    return None
 
 
 def apply_scaffold(data: dict[str, Any], prev: str, req: "TurnReq") -> dict[str, Any]:
@@ -229,6 +239,8 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             messages, schema = build_messages(kind, store, req, notes=notes)
             model = st.model_for(req.mode)
             out: dict[str, Any] = {}
+            keep_terms = thread_terms(req, store.personas) if (kind == "open" and req.cross_from and req.thread) else None
+            dados = datos_ya_dados(t.text for t in req.thread if t.kind == "a") if kind == "follow" else None
 
             async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
                 acc, stats = "", {}
@@ -239,7 +251,8 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind,
                              stats.get("prompt_tokens"), stats.get("prefill_s"), stats.get("prefill_tps"),
                              stats.get("gen_tokens"), stats.get("gen_tps"))
-                out.update(acc=acc, stats=stats, data=sanitize(kind, validate(kind, extract_json(acc))))
+                out.update(acc=acc, stats=stats,
+                           data=sanitize(kind, validate(kind, extract_json(acc)), keep_terms, dados))
 
             async for ev in generate(messages):
                 yield ev
@@ -249,13 +262,13 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                 if prev and is_confused(last_answer(req)):
                     # El equipo no entiende y el modelo solo repite: andamiaje con plantilla, sin gastar otra llamada.
                     log.info("Andamiaje determinista para %s (confusión + repetición).", req.cid)
-                    data = apply_scaffold(data, prev, req)
+                    data = apply_scaffold(data, prev[0], req)
                 elif prev:
                     # Un reintento con la corrección explícita; el cliente descarta lo que ya mostró.
                     log.info("Repregunta repetida de %s; se reintenta con corrección.", req.cid)
                     yield sse({"type": "retry", "reason": "repeticion"})
                     retry = [*messages, {"role": "assistant", "content": out["acc"]},
-                             {"role": "user", "content": correction_message(req, data["seguimiento"])}]
+                             {"role": "user", "content": correction_message(req, data["seguimiento"], prev[1], store.personas)}]
                     async for ev in generate(retry):
                         yield ev
                     data = out["data"]
