@@ -36,6 +36,9 @@ _REGISTRO = {
     "planeamos": "planean", "queremos": "quieren", "priorizamos": "priorizan", "reduciremos": "reducirán",
     "mejoraremos": "mejorarán", "reduciríamos": "reducirían", "contamos": "cuentan", "iniciaremos": "iniciarán",
     "lanzaremos": "lanzarán", "integraremos": "integrarán", "capacitaremos": "capacitarán",
+    "garantizamos": "garantizan", "implementamos": "implementan", "aseguramos": "aseguran", "mantenemos": "mantienen",
+    "evitamos": "evitan", "integramos": "integran", "medimos": "miden", "definimos": "definen", "logramos": "logran",
+    "manejamos": "manejan", "gestionamos": "gestionan", "controlamos": "controlan", "cumplimos": "cumplen",
 }
 _REG_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _REGISTRO), key=len, reverse=True)) + r")\b", re.I)
 
