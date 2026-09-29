@@ -40,6 +40,7 @@ if [[ -n "$APAGAR_EN" && ! "$APAGAR_EN" =~ ^[0-9]+$ ]]; then
   echo "APAGAR_EN debe ser un número de minutos (ej.: APAGAR_EN=180)." >&2
   exit 1
 fi
+PEM="$(realpath "$PEM")"   # antes del cd: una ruta relativa seguiría apuntando a otro lugar
 
 cd "$(git rev-parse --show-toplevel)"
 COMMIT="$(git rev-parse --short "$REF")"
@@ -57,6 +58,14 @@ git archive --format=tar.gz -o "$TGZ" "$REF"
 
 echo "1/5 Copiando $COMMIT a $IP…"
 scp "${SSH_OPTS[@]}" -q "$TGZ" "ubuntu@$IP:/tmp/enrutaco-app.tgz"
+
+# El apagado se programa apenas hay conexión: si un paso posterior falla, la red de seguridad de costos queda puesta.
+if [[ -n "$APAGAR_EN" ]]; then
+  remoto "$APAGAR_EN" <<'REMOTO' || true
+sudo shutdown -h "+$1" >/dev/null 2>&1
+REMOTO
+  echo "    Apagado programado en $APAGAR_EN minutos (cancelar: ssh -i $PEM ubuntu@$IP sudo shutdown -c)."
+fi
 
 echo "2/5 Descomprimiendo en ~/app (se conserva el .env de la instancia)…"
 remoto "$COMMIT" <<'REMOTO'
@@ -79,6 +88,11 @@ REMOTO
 echo "4/5 Esperando a la API…"
 remoto <<'REMOTO'
 for _ in $(seq 1 100); do curl -fsS localhost:8080/api/health >/dev/null 2>&1 && break; sleep 3; done
+if ! curl -fsS localhost:8080/api/health >/dev/null 2>&1; then
+  echo "   La API no respondió en 5 minutos. Últimas líneas del contenedor:"
+  cd ~/app && { docker compose logs --tail 40 api 2>/dev/null || sudo docker compose logs --tail 40 api; }
+  exit 1
+fi
 curl -fsS localhost:8080/api/health | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
@@ -99,13 +113,6 @@ s = d.get("stats") or {}
 print("  ", d.get("status"), d.get("model"), "| carga", s.get("load_s"), "s | lectura del prompt", s.get("prefill_s"), "s")
 '
 REMOTO
-
-if [[ -n "$APAGAR_EN" ]]; then
-  remoto "$APAGAR_EN" <<'REMOTO' || true
-sudo shutdown -h "+$1" >/dev/null 2>&1
-REMOTO
-  echo "Apagado programado en $APAGAR_EN minutos (cancelar: ssh -i $PEM ubuntu@$IP sudo shutdown -c)."
-fi
 
 cat <<FIN
 

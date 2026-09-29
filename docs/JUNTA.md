@@ -9,7 +9,7 @@ Sesión en línea: el docente comparte su pantalla y la app (con el backend en A
 | Apertura del CEO | ~30 s | «Apertura del CEO» (texto fijo con voz, sin modelo) |
 | Exposición del grupo | 15 min | «Presentación 15 min». Bloques: 1 Problema · 2 Propuesta · 3 BI · 4 Roadmap · 5 Caso financiero · 6 Decisión |
 | Preguntas de la Junta | 10 min | «Preguntas 10 min». Una pregunta por miembro, orden fijo: TI → Servicio al Cliente → CFO → Negocio → Operaciones → CEO. Sin repreguntas |
-| Cierre del CEO | ~20 s | «Cierre del CEO» (aparece cuando las 6 respuestas están evaluadas) |
+| Cierre del CEO | ~20 s | «Cierre del CEO»: aparece cuando las 6 respuestas están evaluadas. Si se acaba el tiempo antes, aparece como «Cierre del CEO (tiempo)» en el último minuto del temporizador |
 
 Todos los integrantes deben intervenir: el selector «Responde:» registra quién contestó cada pregunta.
 
@@ -67,16 +67,18 @@ Sesión del 29 de septiembre de 2026:
 | 0:30 – 15:00 | El grupo expone. Al terminar la apertura el modelo se precalienta solo | — |
 | 15:00 | Iniciar las preguntas | «Preguntas 10 min» → «Dar la palabra a Andrés» |
 | Cada pregunta | Escribir o dictar la respuesta, elegir quién respondió y enviar | «Responde:» → «Enviar respuesta» |
-| Cada pregunta | Pasar al siguiente miembro | «Dar la palabra a …» |
+| Cada pregunta | El miembro reacciona y su evaluación queda en pantalla. Pasar al siguiente | «Dar la palabra a …» (el botón ya apunta al siguiente) |
 | ~24:00 | Cerrar la junta | «Cierre del CEO» |
-| 25:00 | Registrar la nota y guardar el acta | «Mostrar notas del docente» → «Usar la nota propuesta» o escribir la nota → «Guardar sesión (.md)» |
+| 25:00 | Guardar el acta y, sin compartir pantalla, registrar la nota | «Guardar sesión (.md)»; luego «Mostrar notas del docente» → «Usar la nota propuesta» o escribir la nota → «Guardar sesión (.md)» otra vez |
 
 Recomendaciones:
 
 - Resume cada respuesta en 1 a 3 frases con las cifras que dio el grupo: el Comité evalúa lo que escribes.
-- Si una pregunta sale confusa y el grupo todavía no respondió, usa «Cambiar la pregunta de …». La pregunta descartada no va al acta.
+- Si una pregunta sale confusa y el grupo todavía no respondió, usa «Cambiar la pregunta de …». La pregunta descartada no va al acta; si la nueva falla, se conserva la anterior.
+- La junta no deja saltar turnos: mientras haya una pregunta sin responder o una respuesta sin evaluar, el siguiente miembro espera.
 - «Detener» corta la generación en curso. Para callar una voz que ya está sonando, apaga «Voz» (arriba) y vuelve a encenderla.
-- La propuesta de nota se muestra solo en el Panel docente, no en el escenario compartido. Revísala después de dejar de compartir o con las notas ocultas.
+- La propuesta de nota se muestra solo en el Panel docente, nunca en el escenario. Con «Ocultar notas del docente» activo tampoco se ve en el panel: muéstralas solo cuando dejes de compartir.
+- Las notas aceptan coma o punto (4,2 o 4.2). Si el valor no está entre 0 y 5, el campo se marca en rojo y el acta lo señala.
 
 ## 4. Propuesta de nota
 
@@ -88,7 +90,7 @@ Recomendaciones:
 
 - Ajuste de −0,5 cuando hubo que activar la guía automática («no entiendo»).
 - Ajuste de −0,5 cuando algún integrante no respondió ninguna pregunta.
-- La nota es el promedio de las 6 evaluaciones con los ajustes, redondeado a una décima.
+- La nota es el promedio de las evaluaciones con los ajustes, redondeado a una décima. Si la junta se cerró por tiempo, la propuesta es parcial y el acta lo indica.
 - La nota final la decide el docente: queda en el acta como «Nota final del docente».
 
 ## 5. Si algo falla
@@ -96,6 +98,7 @@ Recomendaciones:
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | «Sin conexión con la API local» o errores al dar la palabra | Se cayó el túnel | Repite el comando del túnel y recarga la página. La sesión, los grupos y el temporizador se conservan |
+| Error al evaluar una respuesta (o recargaste mientras evaluaba) | Falla de red o del modelo | La respuesta queda guardada: pulsa «Reintentar» |
 | `ssh` se queda esperando y termina en *timeout* | Cambió la IP pública de tu casa | EC2 → Grupos de seguridad → «Editar reglas de entrada» → regla SSH → origen «Mi IP» → Guardar |
 | `ssh` avisa `REMOTE HOST IDENTIFICATION HAS CHANGED` | AWS reutilizó la IP | `ssh-keygen -R <IP-pública>` y repite |
 | Los estudiantes no oyen al Comité | No se compartió el audio de la pestaña | Deja de compartir y comparte de nuevo con audio |
@@ -120,6 +123,7 @@ Recomendaciones:
 
 | Campo | Uso |
 |---|---|
+| `id` | Opcional. Si lo pones, debe ser distinto en cada grupo |
 | `nombre` | Nombre corto: lo dice el CEO y va al acta |
 | `integrantes` | Opciones de «Responde:» y control de participación |
 | `propuesta` | Resumen por bloques. Es el contexto de los agentes (máximo 4.000 caracteres) |

@@ -39,6 +39,19 @@ CORREGIDAS = {
 }
 
 
+# «Grupo Lento»: respuestas que el servidor debe sanear (registro, pregunta encadenada, pregunta en la reacción),
+# generadas despacio y con notas largas. Sirve para ver en el navegador que pantalla y voz usan el texto saneado del
+# evento «speak» mientras el modelo sigue escribiendo.
+LENTO = "Grupo Lento"
+SLOW_OPEN = {"pregunta": "¿Cómo podríamos garantizar el SLA del 98 % sin frenar la operación? Lo digo por el retailer.",
+             "evalua": "Plan concreto para el SLA: dueño, fecha, costo y el indicador con el que se reportará al Comité.",
+             "senales": ["Nombra un dueño con cargo", "Da fecha y costo", "Cita el indicador SLA con umbral"],
+             "trampa": "Responder con buenas prácticas genéricas y sin cifras verificables."}
+SLOW_JUNTA = {"reaccion": "Registro el dueño del dato. Esto me ayuda a ver cómo garantizaré la trazabilidad. ¿Y el costo?",
+              "lectura": "parcial",
+              "vacios": ["Falta el costo por ola y quién lo aprueba", "Falta la fecha de corte del piloto con su indicador"]}
+
+
 @app.get("/api/tags")
 async def tags():
     return {"models": [{"name": "qwen2.5:3b-instruct"}, {"name": "qwen2.5:7b-instruct"}]}
@@ -53,6 +66,8 @@ def respond(body: dict) -> dict:
     schema = body["format"]
     user = body["messages"][1]["content"]
     extra = " ".join(m["content"] for m in body["messages"][2:])
+    if LENTO in user:
+        return SLOW_JUNTA if isinstance(schema, dict) and "reaccion" in schema["properties"] else SLOW_OPEN
     if not (isinstance(schema, dict) and "reaccion" in schema["properties"]):
         return {"pregunta": OPEN, "evalua": "Escalabilidad de la integración", "senales": ["Cita capacidad"], "trampa": "Genérico"}
     n = user.count("(repregunta)")
@@ -75,9 +90,11 @@ async def chat(req: Request):
     if not body.get("stream", True):
         return {"message": {"role": "assistant", "content": txt}, "done": True}
 
+    pausa = 0.12 if LENTO in body["messages"][1]["content"] else 0.01
+
     async def gen():
         for i in range(0, len(txt), 24):
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(pausa)
             yield json.dumps({"message": {"role": "assistant", "content": txt[i:i + 24]}, "done": False}) + "\n"
         yield json.dumps({"message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": 2000,
                           "prompt_eval_duration": 2_000_000_000, "eval_count": 100, "eval_duration": 2_000_000_000,
