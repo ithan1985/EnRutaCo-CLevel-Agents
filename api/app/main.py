@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, quitar_exceso_falso,
+from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, quitar_exceso_falso, _EXCESO,
                     respuesta_vacia, sanitize, scaffold)
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, budget_info, build_messages, concern_attempts, correction_message, correction_open,
@@ -323,10 +323,11 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     data["vacios"] = (data["vacios"] + ["Respuesta evasiva o vacía: reacción automática del servidor."])[-3:]
                 if req.budget is not None and budget_info(store.caso, req.budget)["nivel"] == "ok":
                     # El modelo a veces afirma que el equipo «excede el techo» aunque el total calculado está dentro.
+                    data["vacios"] = [v for v in data["vacios"] if not _EXCESO.search(v)]
                     limpia = quitar_exceso_falso(data["reaccion"])
                     if limpia != data["reaccion"]:
                         data["reaccion"] = limpia
-                        data["vacios"] = (data["vacios"] + ["Se quitó de la reacción una afirmación falsa de exceso del techo."])[-3:]
+                        data["vacios"] = (data["vacios"] + ["Se quitó de la reacción una afirmación falsa: el total está dentro del techo."])[-3:]
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
                 if nota:
