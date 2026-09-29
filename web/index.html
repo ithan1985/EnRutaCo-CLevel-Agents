@@ -32,7 +32,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 .field input{width:160px}.field select{max-width:250px}
 .tog{display:flex;align-items:center;gap:8px;min-height:38px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer;font-size:.9rem}
 .tog[aria-pressed="true"]{border-color:var(--yellow);box-shadow:inset 0 -3px 0 var(--yellow)}
-.timer{font-weight:700;font-size:1.05rem;min-width:54px;text-align:center;padding:4px 8px}
+.seatsRow{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.seatsRow .seats{flex:1;min-width:0;border-bottom:0}
+.timer{font-weight:700;font-size:clamp(2.6rem,5.2vw,4.8rem);line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);padding:0 clamp(16px,3vw,40px);white-space:nowrap}
+.timer[hidden]{display:none}
 .timer.warn{color:var(--warn)}.timer.bad{color:var(--bad)}
 
 .banner{margin:14px clamp(16px,3vw,40px) 0;padding:10px 14px;border-left:4px solid var(--yellow);background:var(--surface);font-size:.9rem}
@@ -170,12 +173,14 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <label class="field">Modelo <select id="mode"></select></label>
     <button class="tog" id="tVoice" aria-pressed="true" type="button">Voz</button>
     <button class="tog" id="tPanel" aria-pressed="false" type="button">Panel docente</button>
-    <span class="timer" id="timerTop" hidden aria-live="polite"></span>
   </div>
 </header>
 
 <div class="banner" id="banner" hidden></div>
-<nav class="seats" id="seats" aria-label="Miembros del Comité"></nav>
+<div class="seatsRow">
+  <nav class="seats" id="seats" aria-label="Miembros del Comité"></nav>
+  <span class="timer" id="timerTop" hidden aria-live="polite"></span>
+</div>
 
 <div class="layout" id="layout">
   <main class="stage">
