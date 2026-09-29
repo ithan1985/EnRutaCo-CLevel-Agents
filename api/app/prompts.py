@@ -353,6 +353,9 @@ def junta_task(p: dict[str, Any], req: Any) -> str:
         "- parcial: responde en parte, o responde sin los datos que harían creíble la respuesta.",
         "- no_convence: no responde lo que preguntaste, es genérica o contradice cifras dadas antes.",
         "La reacción debe ser coherente con la lectura: si convence, dilo; si no, di qué faltó.",
+        "Evalúa SOLO lo que el equipo dijo en esta respuesta: lo que está en el resumen de la propuesta pero no dijeron "
+        "ahora NO cuenta; no les atribuyas cifras ni planes que no mencionaron. Habla de ellos en tercera persona "
+        "(«ustedes proponen»); nunca «esperamos», «establecemos» ni «haremos».",
     ]
     if cifras:
         partes.append("Cifras que dio el equipo (verifica su coherencia): " + " · ".join(cifras))
@@ -446,6 +449,14 @@ def correction_message(req: Any, repetida: str, other_cid: Optional[str] = None,
                        f"({CONCRECION}) y pregunta solo por la primera.")
     return base + (" Cita un elemento concreto de la última respuesta del equipo y pregunta por el componente que falta "
                    "o por la cifra que no cuadra con lo dicho antes en el hilo.")
+
+
+def correction_open(repetida: str, other_cid: str, personas: dict[str, Any], p: dict[str, Any], focus: str) -> str:
+    """Modo junta: la pregunta inicial repite la de otro miembro (contagio). Se pide otra desde el rol y el foco propios."""
+    nombre = personas[other_cid]["corto"] if other_cid in personas else "otro miembro del Comité"
+    txt = (f"CORRECCIÓN OBLIGATORIA: tu pregunta «{repetida}» ya la hizo {nombre}. Genera de nuevo el JSON completo con "
+           f"una pregunta distinta, propia de tu rol ({p['cargo']})")
+    return txt + (f" y centrada en este foco: {focus}." if focus else ".")
 
 
 # ───────────── Mensajes para el LLM ─────────────

@@ -27,9 +27,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import coherencia_lectura, datos_ya_dados, duration_contradiction, sanitize, scaffold
+from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, sanitize,
+                    scaffold)
 from .llm import LLMError, OllamaClient
-from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
+from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, correction_open,
+                      estado_de,
                       follow_count, is_confused, last_answer, prior_questions, similar, thread_terms)
 from .tts import build_engine
 from .tts.common import LRU
@@ -293,10 +295,27 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             async for ev in generate(messages):
                 yield ev
             data = out["data"]
+            if kind == "open" and req.junta and not req.cross_from:
+                # Contagio: el modelo pequeño copia la pregunta de otro miembro. Un reintento con corrección.
+                otra = next((a for a in req.asked if a.text and a.cid and a.cid != req.cid
+                             and similar(data["pregunta"], a.text)), None)
+                if otra:
+                    log.info("Pregunta de %s repite la de %s; se reintenta.", req.cid, otra.cid)
+                    yield sse({"type": "retry", "reason": "repeticion"})
+                    retry = [*messages, {"role": "assistant", "content": out["acc"]},
+                             {"role": "user", "content": correction_open(data["pregunta"], otra.cid, store.personas,
+                                                                         store.personas[req.cid], req.focus)}]
+                    async for ev in generate(retry):
+                        yield ev
+                    data = out["data"]
             if kind == "follow" and req.junta:
-                # Modo junta: evaluación sin repregunta; la lectura se alinea con la reacción.
+                # Modo junta: evaluación sin repregunta; la lectura se alinea con la reacción y con la concreción real
+                # de la respuesta (tope determinista).
                 data["seguimiento"] = ""
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
+                data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
+                if nota:
+                    data["vacios"] = (data["vacios"] + [nota])[-3:]
                 data["estado"] = estado_de(data["lectura"])
             elif kind == "follow":
                 prev = repeated(data, req)

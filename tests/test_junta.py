@@ -56,3 +56,23 @@ def test_api_junta_deja_nota_de_plazos_contradictorios():
     with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=thread, junta=True)) as r:
         d = read_sse(r)[-1]["data"]
     assert d["seguimiento"] == "" and any("contradicción de plazos" in v for v in d["vacios"])
+
+
+def test_tope_de_lectura_para_respuestas_genericas():
+    from app.guard import lectura_por_respuesta, fix_register
+    john = ("John Chávez: al haber una adopción progresiva se va a mejorar los indicadores como el churn y los ANS, "
+            "mejor calidad de entrega y por ende más velocidad, mejor servicio, clientes felices, logramos objetivos")
+    assert lectura_por_respuesta(john, "convence")[0] == "no_convence"
+    buena = "Ana: la Directora de Operaciones es la dueña; revisión semanal en el tablero de BI; OTIF de 96 % al año 3."
+    assert lectura_por_respuesta(buena, "convence") == ("convence", "")
+    assert fix_register("Esperamos reducirlo y establecemos compuertas.") == "Esperan reducirlo y establecen compuertas."
+
+
+def test_api_junta_pregunta_repetida_de_otro_miembro_se_reintenta():
+    q = "¿Cómo afectará la implementación progresiva de ERP, CRM y KMS a las alertas y trazabilidad del paquete?"
+    llm = FakeLLM(payload=[{"pregunta": q}, {"pregunta": "¿Cuál es el payback de la ola 1 con sus supuestos de ahorro?"}])
+    asked = [{"cid": "cs", "text": q}]
+    with make_client(llm).stream("POST", "/api/ask", json=body(cid="cfo", junta=True, asked=asked, focus="ROI")) as r:
+        ev = read_sse(r)
+    assert any(e["type"] == "retry" for e in ev) and "payback" in ev[-1]["data"]["pregunta"]
+    assert "CORRECCIÓN OBLIGATORIA" in llm.calls[1]["messages"][-1]["content"]

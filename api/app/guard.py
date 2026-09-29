@@ -31,6 +31,11 @@ _REGISTRO = {
     "explicas": "explican", "aseguras": "aseguran", "defines": "definen", "planeas": "planean", "piensas": "piensan",
     "garantizarías": "garantizarían", "garantizaré": "garantizarán", "aseguraré": "asegurarán", "implementaré": "implementarán", "migraré": "migrarán", "mediré": "medirán", "garantizaría": "garantizarían", "asegurarías": "asegurarían", "definirías": "definirían", "tú": "ustedes",
     "migramos": "migran",
+    # voz del equipo que el modelo adopta al evaluar (validación del 29-sep)
+    "esperamos": "esperan", "establecemos": "establecen", "proponemos": "proponen", "buscamos": "buscan",
+    "planeamos": "planean", "queremos": "quieren", "priorizamos": "priorizan", "reduciremos": "reducirán",
+    "mejoraremos": "mejorarán", "reduciríamos": "reducirían", "contamos": "cuentan", "iniciaremos": "iniciarán",
+    "lanzaremos": "lanzarán", "integraremos": "integrarán", "capacitaremos": "capacitarán",
 }
 _REG_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _REGISTRO), key=len, reverse=True)) + r")\b", re.I)
 
@@ -326,3 +331,20 @@ def coherencia_lectura(reaccion: str, lectura: str) -> str:
     if lectura == "convence" and neg and not pos:
         return "parcial"
     return lectura
+
+
+def lectura_por_respuesta(respuesta: str, lectura: str) -> tuple[str, str]:
+    """Tope determinista a la lectura según la concreción de la respuesta del equipo (modo junta).
+
+    El modelo pequeño califica «convence» respuestas genéricas y les atribuye datos del resumen de la propuesta que
+    el equipo no dijo. Regla: sin cifras y con a lo sumo un elemento concreto (herramienta, dueño, cadencia,
+    indicador) -> no_convence; sin cifras y con dos -> máximo parcial. Devuelve (lectura, nota para el docente)."""
+    txt = re.sub(r"^[^:]{2,40}:\s*", "", (respuesta or "").strip())   # quita el «Nombre:» de quien respondió
+    orden = {"no_convence": 0, "parcial": 1, "convence": 2}
+    if _NUM.search(txt):
+        return lectura, ""
+    hits = sum(1 for n, pat, _ in _CHECKLIST if n != "métrica y umbral" and re.search(pat, txt, re.I))
+    tope = "no_convence" if hits <= 1 else "parcial" if hits == 2 else "convence"
+    if orden[lectura] <= orden[tope]:
+        return lectura, ""
+    return tope, f"Lectura ajustada a «{tope}»: la respuesta no trae cifras y casi no tiene elementos concretos."
