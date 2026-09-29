@@ -651,6 +651,7 @@ function destinoPalabra(){
 }
 function ask(cid){
   if(!canRun()) return;
+  pararDictado(); $("#answer").value="";
   let reemplaza = null;
   if(S.junta){
     const li=lastItem();
@@ -669,7 +670,7 @@ function submitAnswer(){
     const raw=$("#answer").value.trim(); if(!raw) return;
     const quien=$("#quien").value;
     if(quien){ S.intervinieron.add(quien); renderIntegrantes(); }
-    S.T.push({kind:"a",id:++uid,ts:Date.now(),text:quien?`${quien}: ${raw}`:raw,quien}); $("#answer").value="";
+    S.T.push({kind:"a",id:++uid,ts:Date.now(),text:quien?`${quien}: ${raw}`:raw,quien}); pararDictado(); $("#answer").value="";
     saveSession();   // si la página se recarga durante la evaluación, la respuesta no se pierde
   }
   else if(!S.retry) return;
@@ -810,6 +811,9 @@ function buildVoices(){
 
 /* ───── dictado ───── */
 let rec=null, recBase="";
+// Al enviar la respuesta o dar la palabra, el dictado se corta: si sigue escuchando, vuelve a llenar la caja con la
+// respuesta anterior (el reconocimiento acumula todo lo dictado) y además transcribe la voz del miembro del Comité.
+function pararDictado(){ if(!rec) return; const r=rec; r.onresult=null; try{ r.stop(); }catch(e){} recBase=""; }
 function setupMic(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
   const mic=$("#mic"); mic.hidden=false;
