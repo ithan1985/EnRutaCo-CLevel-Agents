@@ -62,4 +62,38 @@ La transcripción está en orden inverso (lo más reciente arriba). Reconstruida
 | Estado por preocupación | Campo `estado` (abierta, parcial, resuelta) y `cierre` (limite, repeticion) en la respuesta y la UI | Código |
 | Persona y registro | Regla 9 del sistema: solo español, «ustedes», evaluador y nunca parte del equipo | Prompt |
 
-Verificación: `tests/e2e/mock_bucle.py` reproduce la sesión de este TODO con un modelo que ignora el prompt; las salvaguardas de código cortan el bucle. Pendiente: validar la calidad de las repreguntas con Ollama real (`make host`).
+Verificación: `tests/e2e/mock_bucle.py` reproduce la sesión de este TODO con un modelo que ignora el prompt; las salvaguardas de código cortan el bucle.
+
+### Fase 2: validación con qwen2.5:3b real
+
+Sesión real por API (`POST /api/ask` y `/api/follow`, SSE), `cid="ti"` (Andrés, Director de TI), `week=8`, `mode="quick"`, contra el contenedor con `OLLAMA_MAX_LOADED_MODELS=1`. El equipo respondió en este orden: genérico sin datos → cifras concretas → genérico → "no entiendo" → herramienta vaga → cifras contradictorias con el paso 2. Se envió siempre el hilo completo, como hace `web/index.html` (`threadList`).
+
+| # | Paso | Equipo dice | Reacción / repregunta de Andrés | lectura | estado | cierre | guía | vacíos | tiempo (s) |
+|---|------|-------------|----------------------------------|---------|--------|--------|------|--------|------------|
+| 1 | pregunta inicial | — | «¿Cuáles son las dependencias críticas que requerirán soluciones tecnológicas antes de comenzar la migración al ERP?» | — | — | — | — | — | 92.4 |
+| 2 | genérico sin datos | "Con buenas prácticas generales vamos a asegurar que todo funcione bien." | "Los equipos sugirieron buenas prácticas generales pero aún falta definir qué datos se migrarán…" → «¿qué datos se migrarán?» | no_convence | abierta | — | — | [] | 30.3 |
+| 3 | cifras concretas | "Migramos 120.000 registros en 3 fases de 2 meses, con 2 personas y $180M." | "Migramos un volumen estimado de registros sin definir quién será el dueño…" → «¿qué datos no se incluirán en la primera fase?» | no_convence | abierta | — | — | [dueño del dato maestro] | 32.8 |
+| 4 | genérico | "Con buenas prácticas de gobierno de datos." | Reacción **idéntica, palabra por palabra**, a la del paso 3 → «¿Cuál es el criterio…?» | no_convence | abierta | — | — | [] | 35.4 |
+| 5 | "No entiendo, ¿qué sugieres?" | — | Andamiaje determinista: "para darlo por concreto necesito herramienta, dueño, cadencia, métrica con umbral e indicador… empecemos por herramienta." → «¿Qué herramienta o sistema concreto ejecutará lo que proponen?» | no_convence | abierta | — | **andamiaje** | [nota automática] | 37.3 |
+| 6 | herramienta vaga ("Con un MDM sobre AWS") | — | 1 intento repitió una repregunta anterior (reintento automático); reacción final cita "MDM sobre AWS" → «¿Qué métrica utilizará…?» | no_convence | abierta | — | — | [] | 20.7 (wall 60.5, 2 llamadas) |
+| 7 | cifras contradictorias ("Limpiamos los 120.000 registros en **un fin de semana**… sin detener la facturación") | — | 1 reintento por repregunta repetida; reacción final **no menciona la contradicción** con "3 fases de 2 meses" del paso 3 → «¿Quién será el dueño del dato maestro…?» | no_convence | abierta | — | — | [dueño de los datos] | 12.2 (wall 52.1, 2 llamadas) |
+
+**Qué quedó resuelto (validado con llamadas reales, no solo lectura de código):**
+- El andamiaje determinista ante "no entiendo" funciona: descompone en partes y no repite la pregunta (paso 5).
+- El anti-bucle de repregunta repetida funciona: dos veces (pasos 6 y 7) el modelo repitió una repregunta anterior, el servidor reintentó con `correction_message` y obtuvo una repregunta distinta sin exponer el bucle al usuario.
+- Bug nuevo encontrado y corregido: el modelo repite literalmente el "nosotros" de la respuesta del equipo ("Migramos 120.000 registros…") violando la regla 9 (nunca incluirse en el equipo). Se agregó `"migramos": "migran"` a `_REGISTRO` en `guard.py`; confirmado corregido en una llamada real posterior ("Migran 120.000 registros…").
+- Bug nuevo encontrado y corregido (motivo de esta fase): el modelo **no detectó** la contradicción de plazos del paso 7 ("3 fases de 2 meses" vs. "un fin de semana") a pesar de que el prompt ya listaba las cifras y pedía verificar coherencia. Se agregó `guard.duration_contradiction()` (compara el plazo más corto contra el más largo mencionado por el equipo en el hilo, con frases sin cifra como "un fin de semana" traducidas a días aproximados) y se inyecta en el prompt como regla explícita `POSIBLE CONTRADICCIÓN`. Como el aviso en el prompt tampoco bastó para que el modelo lo verbalizara en una prueba dirigida posterior, se agregó además un respaldo determinista en `main.py`: si `duration_contradiction()` detecta algo y ni la reacción ni los vacíos ya lo mencionan, el servidor añade "Posible contradicción de plazos: …" a `vacios`. Confirmado con una llamada real: `vacios=['Posible contradicción de plazos: mencionaron «un fin de semana» y también «2 meses»: los plazos no cuadran.']`.
+
+**Límites conocidos:**
+- Corte heurístico de preguntas encadenadas (`_CHAIN` en `guard.py`): sigue siendo una lista de patrones, no un parser real; frases inusuales pueden colarse.
+- Dependencia del modelo para cuestionar cifras: incluso con la regla `POSIBLE CONTRADICCIÓN` explícita en el prompt, qwen2.5:3b normalmente no lo verbaliza en su propia repregunta (solo lo repite como dato, sin señalar la incoherencia); el respaldo determinista en `vacios` garantiza que quede en el acta, pero no que Andrés "la pregunte".
+- `duration_contradiction()` es una heurística simple (plazo mínimo vs. máximo en todo el hilo, sin verificar que hablen del mismo tema); puede dar falsos positivos si el equipo menciona plazos de dos actividades distintas y no relacionadas.
+- El diccionario `_REGISTRO` es una lista fija: en las pruebas de esta fase aparecieron otras conjugaciones en primera persona no cubiertas (p. ej. "sugeriremos", "asegurarás") que se colaron sin corregir. Ampliar caso por caso, como con "migramos", en vez de intentar cubrir todas las formas verbales.
+- Feedback repetido palabra por palabra entre turnos consecutivos (paso 3→4 en la tabla): la regla de prompt "prohibidas las fórmulas vacías" no es suficiente por sí sola; no se implementó salvaguarda determinista para esto en esta fase (no era el objetivo original) — candidato para una próxima iteración, análogo al anti-bucle de repregunta repetida pero aplicado a `reaccion`.
+- Se observó una cifra inventada por el modelo en una corrida (dijo "doce personas" cuando el equipo dijo "2 personas"): riesgo de fabricación de cifras no verificado por ninguna salvaguarda actual.
+
+**Pendientes:**
+- Evaluación de qwen2.5:7b, solo en GPU (no se debe cargar junto al 3b sin GPU: satura el equipo).
+- Publicación del proyecto con enlace público (más allá del repo en GitHub).
+- Considerar una salvaguarda determinista para la reacción repetida palabra por palabra entre turnos.
+- Considerar una verificación (aunque sea heurística) de cifras que el modelo menciona sin que estén en el hilo ni en el caso.
