@@ -10,7 +10,7 @@ services:
       - "11434:11434"
     environment:
       OLLAMA_NUM_PARALLEL: "1"        # un solo hilo de generación: menos memoria y caché de prefijo estable
-      OLLAMA_MAX_LOADED_MODELS: "2"   # deja cargados el modelo rápido y el profundo (32 GB de RAM lo permiten)
+      OLLAMA_MAX_LOADED_MODELS: "1"   # un solo modelo cargado a la vez: sin GPU, cargar 3b y 7b juntos saturó el equipo
       OLLAMA_KEEP_ALIVE: "30m"
     volumes:
       - ollama:/root/.ollama
