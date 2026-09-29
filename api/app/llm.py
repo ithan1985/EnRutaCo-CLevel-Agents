@@ -49,12 +49,35 @@ class OllamaClient:
         return name in names or (":" not in name and f"{name}:latest" in names)
 
     async def load(self, model: str) -> None:
-        """Carga el modelo en memoria sin generar texto (evita el arranque en frío en la primera pregunta)."""
+        """Carga el modelo en memoria sin generar texto (evita el arranque en frío en la primera pregunta).
+
+        Con el mismo num_ctx que los turnos: si difiere, Ollama recarga el modelo en la primera pregunta y la
+        precarga no sirve de nada."""
         try:
             async with self._client(300) as c:
-                await c.post("/api/generate", json={"model": model, "keep_alive": self.keep_alive})
+                await c.post("/api/generate", json={"model": model, "keep_alive": self.keep_alive,
+                                                    "options": {"num_ctx": self.num_ctx}})
         except httpx.HTTPError:
             pass
+
+    async def prime(self, model: str, messages: list[dict[str, str]], schema: dict[str, Any] | str) -> dict[str, Any]:
+        """Precalentamiento: carga el modelo y deja en la caché de prefijo de Ollama el prompt de la próxima pregunta
+        (genera un solo token). Si la pregunta real llega con el mismo prompt, se salta casi toda la lectura."""
+        body = {"model": model, "messages": messages, "stream": False, "format": schema, "keep_alive": self.keep_alive,
+                "options": {"temperature": 0, "num_ctx": self.num_ctx, "num_predict": 1}}
+        try:
+            async with self._client() as c:
+                r = await c.post("/api/chat", json=body)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise LLMError("llm_unreachable", "No hay conexión con Ollama.") from e
+        except httpx.ReadTimeout as e:
+            raise LLMError("llm_timeout", "Ollama tardó demasiado en responder.") from e
+        if r.status_code != 200:
+            detail = r.text[:300]
+            if r.status_code == 404 or "not found" in detail.lower():
+                raise LLMError("model_missing", f"El modelo {model} no está descargado todavía.")
+            raise LLMError(f"http_{r.status_code}", detail)
+        return summarize_stats(r.json())
 
     async def pull(self, model: str) -> AsyncIterator[dict[str, Any]]:
         async with self._client(3600) as c:

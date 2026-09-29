@@ -46,3 +46,13 @@ def test_api_junta_corrige_lectura_y_no_repregunta():
     assert d["seguimiento"] == "" and d["lectura"] == "parcial" and d["estado"] == "parcial"
     assert "garantizarán" in d["reaccion"] or "garantizaré" not in d["reaccion"]
     assert llm.calls[0]["schema"] is SCHEMA_JUNTA
+
+
+def test_api_junta_deja_nota_de_plazos_contradictorios():
+    # En modo junta tampoco hay repregunta: la contradicción de plazos queda anotada para el docente.
+    llm = FakeLLM(payload={"reaccion": "Registro el plan de migración.", "lectura": "parcial", "vacios": []})
+    thread = [{"kind": "q", "cid": "ti", "text": "¿En cuánto tiempo migran el AS/400?"},
+              {"kind": "a", "text": "Migramos 120.000 registros en 3 fases de 2 meses; la limpieza se hace en un fin de semana."}]
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=thread, junta=True)) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["seguimiento"] == "" and any("contradicción de plazos" in v for v in d["vacios"])

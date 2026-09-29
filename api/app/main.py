@@ -5,6 +5,7 @@ Endpoints:
   GET  /api/health            estado de Ollama, descarga de modelos y voces
   POST /api/ask               pregunta de un personaje (SSE)
   POST /api/follow            reacción y repregunta tras la respuesta del equipo (SSE)
+  POST /api/warmup            carga el modelo y precalienta el prompt de la próxima pregunta (sin generar texto)
   POST /api/tts               texto -> audio WAV con la voz del personaje
   GET  /api/tts/sample/{cid}  muestra de voz (frase ancla del personaje)
   GET  /api/voices            hablantes disponibles por modelo (para ajustar personas.yaml)
@@ -16,6 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal, Optional
 
@@ -87,6 +89,27 @@ def extract_json(text: str) -> Any:
             return json.loads(t[i : j + 1])
         except ValueError:
             return None
+    return None
+
+
+def field_value(text: str, key: str) -> Optional[str]:
+    """Valor completo de la clave de texto `key` dentro de un JSON que todavía se está generando; None si aún no
+    cerró. Decodifica los escapes igual que json.loads, para que coincida con el valor del JSON final."""
+    m = re.search(r'"%s"\s*:\s*"' % re.escape(key), text)
+    if not m:
+        return None
+    esc = False
+    for j in range(m.end(), len(text)):
+        ch = text[j]
+        if esc:
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == '"':
+            try:
+                return json.loads(text[m.end() - 1 : j + 1])
+            except ValueError:
+                return None
     return None
 
 
@@ -242,12 +265,24 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             out: dict[str, Any] = {}
             keep_terms = thread_terms(req, store.personas) if (kind == "open" and req.cross_from and req.thread) else None
             dados = datos_ya_dados(t.text for t in req.thread if t.kind == "a") if kind == "follow" else None
+            # Voz anticipada: en cuanto el modelo cierra el texto que se va a decir (la pregunta, o la reacción en modo
+            # junta), se envía ya saneado con las mismas reglas del resultado final. La voz arranca antes de que
+            # terminen las notas del docente o los vacíos, y no se corrige en voz alta. Una repregunta normal no se
+            # anticipa: el servidor todavía puede reintentarla o cerrarla.
+            speak_key = "pregunta" if kind == "open" else ("reaccion" if req.junta else None)
 
             async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
-                acc, stats = "", {}
+                acc, stats, spoken = "", {}, speak_key is None
                 async for piece in client.chat_stream(model, msgs, schema, st.temperature, st.num_predict, stats):
                     acc += piece
                     yield sse({"type": "token", "t": piece})
+                    if not spoken:
+                        raw = field_value(acc, speak_key)
+                        if raw is not None:
+                            spoken = True
+                            if raw.strip():
+                                early = sanitize(kind, {speak_key: raw.strip(), "vacios": []}, keep_terms, dados)[speak_key]
+                                yield sse({"type": "speak", "text": early})
                 if stats:
                     log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind,
                              stats.get("prompt_tokens"), stats.get("prefill_s"), stats.get("prefill_tps"),
@@ -282,6 +317,7 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                         data = force_close(data, "repeticion")
                 if data["seguimiento"] and (follow_count(req) >= MAX_FOLLOWS or concern_attempts(req) >= MAX_ATTEMPTS):
                     data = force_close(data, "limite")
+            if kind == "follow":
                 dur = duration_contradiction(t.text for t in req.thread if t.kind == "a")
                 ya_senalada = "contradic" in data["reaccion"].lower() or any(
                     "contradic" in v.lower() for v in data["vacios"])
@@ -308,6 +344,27 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
     @app.post("/api/follow")
     async def follow(req: TurnReq) -> StreamingResponse:
         return sse_response(turn_stream("follow", req))
+
+    @app.post("/api/warmup")
+    async def warmup(req: TurnReq) -> dict[str, Any]:
+        """Carga el modelo del modo pedido y deja en la caché de prefijo el prompt exacto de la próxima pregunta.
+
+        La interfaz lo llama al abrir la junta: mientras el equipo expone (15 min) el modelo queda listo y la primera
+        pregunta no paga el arranque en frío. Mismo prompt que /api/ask con la misma petición."""
+        if req.cid not in store.personas:
+            raise HTTPException(404, "Personaje desconocido.")
+        notes = req.mode == "deep" or st.notes_in_quick
+        messages, schema = build_messages("open", store, req, notes=notes)
+        model = st.model_for(req.mode)
+        if not hasattr(client, "prime"):
+            return {"status": "skipped", "model": model}
+        try:
+            stats = await client.prime(model, messages, schema)
+        except LLMError as e:
+            raise HTTPException(503, e.message) from e
+        log.info("Precalentamiento %s para %s: carga %ss · prefill %s tok en %ss", model, req.cid,
+                 stats.get("load_s"), stats.get("prompt_tokens"), stats.get("prefill_s"))
+        return {"status": "ok", "model": model, "stats": stats}
 
     # ---- voz ----
     async def synth(cid: str, text: str) -> bytes:
