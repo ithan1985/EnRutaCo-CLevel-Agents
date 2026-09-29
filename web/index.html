@@ -390,7 +390,7 @@ async function boot(){
     if(S.junta){ const sig=juntaSiguiente(); if(sig){ S.active=sig; focoPara(sig); } }
     renderAll();
   });
-  $("#bApertura").addEventListener("click", ()=>{ setStatus("Apertura del CEO…"); speak("ceo", textoApertura(), true); });
+  $("#bApertura").addEventListener("click", ()=>{ S.apertura=true; S.active="ceo"; renderAll(); setStatus("Apertura del CEO…"); speak("ceo", textoApertura(), true); });
 
   applyPanel(); renderBudget(); buildVoices(); setupMic(); renderIntegrantes(); renderAll(); pollHealth();
 }
@@ -528,6 +528,7 @@ function setStatus(msg, err){ const s=$("#status"); s.textContent=msg||""; s.cla
 const canRun = () => !S.busy && S.ready[S.mode];
 
 async function run(cid, kind, body){
+  if(S.apertura){ S.apertura=false; }
   const enJunta = S.junta && kind==="follow";
   S.busy=true; S.ctl=new AbortController(); S.live={cid,kind,reaccion:"",text:"",spoken:false,spokenText:"",noEarlySpeech:enJunta}; setStatus(""); renderAll();
   const key = kind==="open" ? "pregunta" : "seguimiento";
@@ -601,7 +602,7 @@ function normalizarGrupos(raw){
     return {
       id: str(g.id) || `g${i+1}`, nombre: nombre.slice(0,60),
       integrantes: [...new Set((Array.isArray(g.integrantes)?g.integrantes:[]).map(x=>String(x).trim()).filter(Boolean))],
-      propuesta: str(g.propuesta).slice(0,4000),
+      propuesta: str(g.propuesta).replace(/\\r\\n|\\n/g,"\n").slice(0,4000),
       seleccion: (Array.isArray(g.seleccion)?g.seleccion:[]).map(x=>String(x).trim().toUpperCase()).filter(c=>validos.has(c)),
       focos, presionar: (Array.isArray(g.presionar)?g.presionar:[]).map(x=>String(x).trim()).filter(Boolean).slice(0,6)
     };
@@ -659,7 +660,7 @@ function stopAudio(){
 }
 function renderSpeaking(){
   document.querySelectorAll(".seat").forEach(el=>el.classList.toggle("speaking", el.dataset.id===A.cid));
-  document.querySelectorAll(".portrait").forEach(el=>el.classList.toggle("speaking", !!A.cid));
+  document.querySelectorAll(".portrait").forEach(el=>el.classList.toggle("speaking", !!A.cid && el.dataset.cid===A.cid));
 }
 function playBlob(blob, cid){
   const audio=new Audio(URL.createObjectURL(blob)); A.audio=audio; A.cid=cid;
@@ -674,6 +675,7 @@ function playBlob(blob, cid){
   // Cualquier salida (fin natural, pausa o error, incl. las muestras de la Sala de voces) debe soltar A.cid y
   // quitar .speaking; si no, el anillo de "hablando" queda pegado en un asiento que ya no habla.
   const cleanup=()=>{ if(A.audio===audio) stopAudio(); URL.revokeObjectURL(audio.src); };
+  audio.addEventListener("ended", ()=>{ if(S.apertura && cid==="ceo") finApertura(); });
   audio.addEventListener("ended", cleanup);
   audio.addEventListener("pause", cleanup);
   audio.addEventListener("error", cleanup);
@@ -725,7 +727,7 @@ const avatar = (id, cls="av") => h("div",{class:cls,"aria-hidden":"true"}, h("im
 function renderSeats(){
   const nav=$("#seats"); nav.replaceChildren(); const lead=CFG.semanas[S.week-1].lead;
   for (const id of CFG.orden){ const p=P(id);
-    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.active=id;focoPara(id);renderAll();}},
+    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.apertura=false;S.active=id;focoPara(id);renderAll();}},
       id===lead?h("span",{class:"lead","aria-hidden":"true"}):null, avatar(id), h("span",{class:"nm",text:p.nombre}), h("span",{class:"rl",text:p.cargo}));
     nav.append(b);
   }
@@ -755,12 +757,29 @@ function renderJunta(){
   const n=juntaHecho().size, sig=juntaSiguiente();
   info.textContent = sig ? `Pregunta ${Math.min(n+1,6)} de 6 · turno de ${P(sig).corto} (${P(sig).cargo}).` : "Junta completa (6 de 6).";
 }
+function finApertura(){
+  if(!S.apertura) return; S.apertura=false; setStatus("");
+  const sig = S.junta ? juntaSiguiente() : null;
+  if(sig){ S.active=sig; focoPara(sig); }
+  renderAll();
+}
+function pendienteRespuesta(){ const q=lastQ(), li=lastItem(); return !!q && !q.closed && !!q.text && !!li && li.kind==="q"; }
 function renderCurrent(){
   const c=$("#current"); let node, cid;
   if(S.live){
     const L=S.live; cid=L.cid; const p=P(cid);
     node=h("div",null, speakerBlock(cid), L.reaccion?h("p",{class:"react",text:L.reaccion}):null,
       h("div",{class:"qwrap"}, L.text?h("p",{class:"qtext"+lenCls(L.text),text:L.text}):h("p",{class:"qtext thinking"}, `${p.corto} ${L.retry?"está reformulando (evita repetirse)":"está formulando"}${L.kind==="open"?" su pregunta":" su reacción"}`, h("span",{class:"dots"}))));
+  } else if(S.apertura){
+    cid="ceo";
+    node=h("div",null, speakerBlock(cid, h("span",{class:"lect parcial",text:"Apertura de la junta"})),
+      h("div",{class:"qwrap"}, h("p",{class:"qtext closed-text",text:textoApertura()})));
+  } else if(lastQ() && !pendienteRespuesta() && S.active!==lastQ().cid){
+    cid=S.active; const p=P(cid), q=lastQ();
+    const info = S.junta ? `Pregunta ${Math.min(juntaHecho().size+1,6)} de 6 · turno de ${p.corto}.` : `Tiene la palabra ${p.corto}.`;
+    node=h("div",{class:"empty"}, speakerBlock(cid),
+      h("div",{class:"qwrap"}, h("p",{class:"qtext",text:`${p.corto} tiene la palabra.`})),
+      h("p",{class:"cap",text:`${info} Pulsa «Dar la palabra a ${p.corto}». Intervención anterior: ${P(q.cid).corto}${q.estado?` (preocupación ${q.estado})`:""}; está en el historial.`}));
   } else if(lastQ()){
     const q=lastQ(); cid=q.cid;
     node=h("div",null, speakerBlock(cid, lectTag(q)),
@@ -773,7 +792,7 @@ function renderCurrent(){
       h("div",{class:"qwrap"}, h("p",{class:"qtext",text: showAnchor ? "“"+p.ancla+"”" : p.arquetipo})),
       h("p",{class:"cap",text:`Semana ${S.week}: ${w.titulo}. Pulsa «Dar la palabra» para que ${p.corto} formule su pregunta al equipo.`}));
   }
-  c.replaceChildren(h("div",{class:"scene"}, h("div",{class:"scene-main"},node), h("div",{class:"portrait"}, h("img",{src:`img/${cid}.webp`,alt:P(cid).nombre}))));
+  c.replaceChildren(h("div",{class:"scene"}, h("div",{class:"scene-main"},node), h("div",{class:"portrait","data-cid":cid}, h("img",{src:`img/${cid}.webp`,alt:P(cid).nombre}))));
   renderSpeaking();
 }
 function renderHistory(){
