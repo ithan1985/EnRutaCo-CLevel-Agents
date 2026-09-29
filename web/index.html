@@ -8,7 +8,7 @@
 :root{
   --bg:#ffffff; --surface:#f3f6fb; --ink:#17233a; --muted:#56657d; --line:#d8e0ec;
   --accent:#204172; --yellow:#FFB725; --primary:#204172; --on-primary:#ffffff;
-  --ok:#1d6b45; --warn:#8a5a00; --bad:#a4262c; --focus:#2d6cdf; --lvl:0; --escala:1;
+  --ok:#1d6b45; --warn:#8a5a00; --bad:#a4262c; --focus:#2d6cdf; --lvl:0;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -32,8 +32,6 @@ button,input,select,textarea{font:inherit;color:inherit}
 .field input{width:160px}.field select{max-width:250px}
 .tog{display:flex;align-items:center;gap:8px;min-height:38px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer;font-size:.9rem}
 .tog[aria-pressed="true"]{border-color:var(--yellow);box-shadow:inset 0 -3px 0 var(--yellow)}
-.zoom{display:flex;gap:6px}
-.zoom .tog{padding:0 14px;min-width:38px;justify-content:center}
 .timer{font-weight:700;font-size:1.05rem;min-width:54px;text-align:center;padding:4px 8px}
 .timer.warn{color:var(--warn)}.timer.bad{color:var(--bad)}
 
@@ -80,12 +78,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .lect{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:700;margin-left:10px}
 .lect::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor}
 .lect.convence{color:var(--ok)}.lect.parcial{color:var(--warn)}.lect.no_convence{color:var(--bad)}
-.react{color:var(--muted);font-size:calc(1.1rem * var(--escala));max-width:48em;margin:0 0 16px}
+.react{color:var(--muted);font-size:1.1rem;max-width:48em;margin:0 0 16px}
 .qwrap{border-left:6px solid var(--yellow);padding:4px 0 4px 22px}
-.qtext{margin:0;font-size:calc(clamp(1.2rem,2.1vw,1.7rem) * var(--escala));line-height:1.3;font-weight:700;color:var(--accent);max-width:34em;white-space:pre-wrap}
-.qtext.long{font-size:calc(clamp(1.1rem,1.8vw,1.45rem) * var(--escala))}
-.qtext.xlong{font-size:calc(clamp(1rem,1.6vw,1.25rem) * var(--escala))}
-.qtext.closed-text{font-size:calc(clamp(1rem,1.6vw,1.25rem) * var(--escala));font-weight:400;color:var(--ink)}
+.qtext{margin:0;font-size:clamp(1.2rem,2.1vw,1.7rem);line-height:1.3;font-weight:700;color:var(--accent);max-width:34em;white-space:pre-wrap}
+.qtext.long{font-size:clamp(1.1rem,1.8vw,1.45rem)}
+.qtext.xlong{font-size:clamp(1rem,1.6vw,1.25rem)}
+.qtext.closed-text{font-size:clamp(1rem,1.6vw,1.25rem);font-weight:400;color:var(--ink)}
 .qtext.thinking{color:var(--muted);font-weight:400;font-size:1.2rem}
 .closed{margin-top:10px;font-size:.88rem;color:var(--muted)}
 .dots::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4,end) infinite}
@@ -144,6 +142,11 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .grupoSel[hidden]{display:none}
 .presionar{margin:6px 0 4px;padding:8px 12px;border-left:4px solid var(--bad);background:var(--surface);font-size:.88rem}
 .presionar[hidden]{display:none}
+.califica{margin:6px 0;padding:10px 12px;border-left:4px solid var(--yellow);background:var(--surface);font-size:.88rem}
+.califica .nota{font-size:1.6rem;font-weight:700;color:var(--accent)}
+.califica table{width:100%;border-collapse:collapse;margin-top:6px}
+.califica td{padding:2px 4px;border-top:1px solid var(--line);vertical-align:top}
+.califica td.v{text-align:right;white-space:nowrap}
 .presionar ul{margin:4px 0 0;padding-left:18px}
 #gruposJson{min-height:110px;font-family:ui-monospace,Consolas,monospace;font-size:.8rem}
 .gbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
@@ -167,10 +170,6 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <label class="field">Modelo <select id="mode"></select></label>
     <button class="tog" id="tVoice" aria-pressed="true" type="button">Voz</button>
     <button class="tog" id="tPanel" aria-pressed="false" type="button">Panel docente</button>
-    <div class="zoom" role="group" aria-label="Tamaño de letra para proyección">
-      <button class="tog" id="zOut" type="button" title="Reducir letra">A−</button>
-      <button class="tog" id="zIn" type="button" title="Aumentar letra">A+</button>
-    </div>
     <span class="timer" id="timerTop" hidden aria-live="polite"></span>
   </div>
 </header>
@@ -212,6 +211,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
     <div class="presionar" id="presionar" hidden></div>
     <h3>Integrantes del equipo</h3>
+    <label class="field grupoSel" id="grupoPanelField" hidden>Grupo <select id="grupoPanel"><option value="">Elegir grupo…</option></select></label>
     <p class="hint">Nombres separados por coma. Aparecen en «Responde:» y como chips (gris = no ha intervenido, verde = ya intervino).</p>
     <input type="text" id="integrantes" placeholder="Ej.: Ana, Luis, Sofía" maxlength="200">
     <div class="chips" id="chipsInt"></div>
@@ -229,6 +229,9 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <label class="chkline"><input type="checkbox" id="useBudget"> Incluir esta selección en las preguntas</label>
     <h3>Lectura de la pregunta actual</h3>
     <div class="meta" id="meta"></div>
+    <h3>Propuesta de calificación</h3>
+    <p class="hint">Calculada a partir de la lectura del Comité en cada respuesta: convence 5,0 · a medias 3,5 · no convence 2,0; −0,5 si hubo que activar la guía automática («no entiendo») y −0,5 si algún integrante no intervino. Es una propuesta: la nota final la decides tú.</p>
+    <div class="califica" id="califica"><span class="hint">Aparece cuando el Comité evalúa la primera respuesta.</span></div>
     <h3>Observación y nota del docente</h3>
     <textarea id="obs" placeholder="Tu observación sobre la respuesta del equipo"></textarea>
     <div class="inl"><label for="score">Nota (0–5)</label><input id="score" type="number" min="0" max="5" step="0.1"></div>
@@ -277,7 +280,7 @@ const dedupe = arr => [...new Set(arr||[])];
 let CFG = null;
 const S = {
   week: 8, team: "", mode: "quick", voice: true, panel: false, active: "ceo", focus: "",
-  T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null, escala: 1,
+  T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null,
   sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false,
   integrantes: [], intervinieron: new Set(), timer: {secs: 0, running: false, id: null, shown: false},
   grupos: [], grupoId: "", focos: {}, presionar: [], junta: false
@@ -331,7 +334,6 @@ async function boot(){
   S.voice = pref("voice")!=="0" && CFG.tts.engine!=="none";
   $("#tVoice").setAttribute("aria-pressed", String(S.voice)); $("#tVoice").hidden = CFG.tts.engine==="none";
   S.panel = pref("panel")==="1";
-  const es = parseFloat(pref("escala")); setEscala(Number.isFinite(es) ? es : 1);
   $("#team").value = S.team; $("#useBudget").checked = S.useBudget;
   $("#integrantes").value = S.integrantes.join(", ");
   if (!S.T.length) S.active = CFG.semanas[S.week-1].lead; else S.active = lastQ()?.cid || S.active;
@@ -341,8 +343,6 @@ async function boot(){
   md.addEventListener("change", e=>{ S.mode=e.target.value; pref("mode",S.mode); syncControls(); });
   $("#tVoice").addEventListener("click", e=>{ S.voice=!S.voice; e.currentTarget.setAttribute("aria-pressed",String(S.voice)); pref("voice",S.voice?1:0); if(!S.voice) stopAudio(); });
   $("#tPanel").addEventListener("click", ()=>{ S.panel=!S.panel; pref("panel",S.panel?1:0); applyPanel(); });
-  $("#zOut").addEventListener("click", ()=>setEscala(S.escala-0.1));
-  $("#zIn").addEventListener("click", ()=>setEscala(S.escala+0.1));
   $("#integrantes").addEventListener("input", e=>{
     S.integrantes = [...new Set(e.target.value.split(",").map(s=>s.trim()).filter(Boolean))];
     renderIntegrantes(); saveSession();
@@ -377,6 +377,7 @@ async function boot(){
 
   try{ const g = JSON.parse(pref("grupos")||"null"); if (g) S.grupos = normalizarGrupos(g); }catch(e){}
   $("#grupo").addEventListener("change", e=>{ if(e.target.value) cargarGrupo(e.target.value); });
+  $("#grupoPanel").addEventListener("change", e=>{ if(e.target.value) cargarGrupo(e.target.value); });
   $("#bGrupos").addEventListener("click", ()=>importarGrupos($("#gruposJson").value));
   $("#gruposFile").addEventListener("change", async e=>{ const f=e.target.files[0]; if(!f) return;
     const t=await f.text(); $("#gruposJson").value=t; importarGrupos(t); e.target.value=""; });
@@ -390,7 +391,7 @@ async function boot(){
     if(S.junta){ const sig=juntaSiguiente(); if(sig){ S.active=sig; focoPara(sig); } }
     renderAll();
   });
-  $("#bApertura").addEventListener("click", ()=>{ S.apertura=true; S.active="ceo"; renderAll(); setStatus("Apertura del CEO…"); speak("ceo", textoApertura(), true); });
+  $("#bApertura").addEventListener("click", ()=>{ S.apertura=true; renderAll(); setStatus("Apertura del CEO…"); speak("ceo", textoApertura(), true); });
 
   applyPanel(); renderBudget(); buildVoices(); setupMic(); renderIntegrantes(); renderAll(); pollHealth();
 }
@@ -398,11 +399,6 @@ async function boot(){
 function applyPanel(){
   $("#panel").hidden = !S.panel; $("#layout").classList.toggle("with-panel", S.panel);
   $("#tPanel").setAttribute("aria-pressed", String(S.panel));
-}
-function setEscala(v){
-  S.escala = Math.min(1.3, Math.max(0.8, Math.round(v*10)/10));
-  document.documentElement.style.setProperty("--escala", String(S.escala));
-  pref("escala", S.escala); // pref() ya hace su propio try/catch
 }
 function renderIntegrantes(){
   const box=$("#chipsInt"); box.replaceChildren();
@@ -619,10 +615,12 @@ function importarGrupos(texto){
   }catch(e){ msg.textContent = "No se pudo cargar: " + e.message; msg.className = "hint err"; }
 }
 function renderGrupos(){
-  const sel = $("#grupo"); if (!sel) return;
-  sel.replaceChildren(h("option",{value:"",text:"Elegir grupo…"}), ...S.grupos.map(g=>h("option",{value:g.id,text:g.nombre})));
-  sel.value = S.grupos.some(g=>g.id===S.grupoId) ? S.grupoId : "";
-  $("#grupoField").hidden = !S.grupos.length;
+  for (const [selId, fieldId] of [["#grupo","#grupoField"],["#grupoPanel","#grupoPanelField"]]){
+    const sel = $(selId); if (!sel) continue;
+    sel.replaceChildren(h("option",{value:"",text:"Elegir grupo…"}), ...S.grupos.map(g=>h("option",{value:g.id,text:g.nombre})));
+    sel.value = S.grupos.some(g=>g.id===S.grupoId) ? S.grupoId : "";
+    $(fieldId).hidden = !S.grupos.length;
+  }
 }
 function renderPresionar(){
   const box = $("#presionar"); if (!box) return;
@@ -805,6 +803,32 @@ function renderHistory(){
       pr.q.text?h("div",{class:"hq"},h("b",{text:p.corto+": "}),pr.q.text):null, pr.a?h("div",{class:"ha",text:(S.team||"Equipo")+": "+pr.a.text}):null));
   }
 }
+const BLOQUE = {ti:"Propuesta To-Be y roadmap", cs:"Problema (cliente)", cfo:"Caso financiero", dn:"Modelo de negocio", ops:"Quick wins / operación", ceo:"Decisión"};
+const PUNTOS = {convence:5, parcial:3.5, no_convence:2};
+function calificacion(){
+  const turnos = S.T.filter(x=>x.kind==="q" && x.follow && x.lectura in PUNTOS).map(x=>{
+    let v = PUNTOS[x.lectura], ajuste = "";
+    if (x.guia){ v -= 0.5; ajuste = "guía automática −0,5"; }
+    return {cid:x.cid, lectura:x.lectura, v, ajuste};
+  });
+  if (!turnos.length) return null;
+  let base = turnos.reduce((a,t)=>a+t.v,0)/turnos.length, part = 0;
+  const faltan = S.integrantes.filter(n=>!S.intervinieron.has(n));
+  if (S.integrantes.length && faltan.length) part = -0.5;
+  const nota = Math.max(0, Math.min(5, Math.round((base+part)*10)/10));
+  return {turnos, base:Math.round(base*100)/100, part, faltan, nota};
+}
+const num = v => String(v).replace(".", ",");
+function renderCalificacion(){
+  const box = $("#califica"); if(!box) return;
+  const c = calificacion();
+  if(!c){ box.replaceChildren(h("span",{class:"hint",text:"Aparece cuando el Comité evalúa la primera respuesta."})); return; }
+  const filas = c.turnos.map(t=>h("tr",null, h("td",{text:`${P(t.cid).corto}${BLOQUE[t.cid]?" · "+BLOQUE[t.cid]:""}`}),
+    h("td",{text:LECT[t.lectura]+(t.ajuste?` (${t.ajuste})`:"")}), h("td",{class:"v",text:num(t.v.toFixed(1))})));
+  if (c.part) filas.push(h("tr",null, h("td",{text:"Participación"}), h("td",{text:`No intervino: ${c.faltan.join(", ")}`}), h("td",{class:"v",text:"−0,5"})));
+  box.replaceChildren(h("div",null, h("span",{class:"nota",text:num(c.nota.toFixed(1))}), h("span",{text:` / 5 · promedio de ${c.turnos.length} respuesta(s): ${num(c.base)}`})),
+    h("table",null, h("tbody",null, filas)));
+}
 function renderMeta(){
   const m=$("#meta"), q=lastQ();
   if(!q){ m.replaceChildren(h("p",{class:"hint",text:"Aparece cuando un agente formula una pregunta."})); syncObs(); return; }
@@ -841,7 +865,7 @@ function renderPerf(){
   el.textContent = !s ? "Aún no hay mediciones." :
     `Lectura del prompt: ${s.prompt_tokens} tokens en ${s.prefill_s} s · generación: ${s.gen_tps ?? "?"} tokens/s (${s.gen_tokens} tokens) · carga del modelo: ${s.load_s} s · total ${s.total_s} s.`;
 }
-function renderAll(){ renderSeats(); renderCurrent(); renderHistory(); renderMeta(); syncControls(); }
+function renderAll(){ renderSeats(); renderCurrent(); renderHistory(); renderMeta(); renderCalificacion(); syncControls(); }
 
 /* ───── exportar ───── */
 function exportSession(){
@@ -853,6 +877,12 @@ function exportSession(){
     const si=S.integrantes.filter(n=>S.intervinieron.has(n)), no=S.integrantes.filter(n=>!S.intervinieron.has(n));
     out.push("## Integrantes", `Integrantes que intervinieron: ${si.join(", ")||"ninguno"}`,
       `Integrantes que no intervinieron: ${no.join(", ")||"ninguno"}`, "");
+  }
+  const cal = calificacion();
+  if(cal){
+    out.push("## Propuesta de calificación (automática)", `Nota propuesta: ${num(cal.nota.toFixed(1))} / 5 (promedio de ${cal.turnos.length} respuesta(s): ${num(cal.base)}${cal.part?"; −0,5 por participación incompleta":""}).`);
+    cal.turnos.forEach(t=>out.push(`- ${P(t.cid).corto}${BLOQUE[t.cid]?" · "+BLOQUE[t.cid]:""}: ${LECT[t.lectura]}${t.ajuste?` (${t.ajuste})`:""} → ${num(t.v.toFixed(1))}`));
+    out.push("Regla: convence 5,0 · a medias 3,5 · no convence 2,0; −0,5 por guía automática; −0,5 si algún integrante no intervino. La nota final la define el docente.","");
   }
   out.push("## Intercambios"); let n=0;
   for(const x of S.T){
