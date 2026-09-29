@@ -56,8 +56,14 @@ def _match_case(src: str, dst: str) -> str:
     return dst[0].upper() + dst[1:] if src[:1].isupper() else dst
 
 
+# «nos permitirá», «nos garantiza»...: el evaluador no es beneficiario del plan del equipo. Solo estos verbos, para no
+# tocar usos legítimos («nos preocupa», «nos dijeron»).
+_NOS = re.compile(r"\b([Nn])os (permitir[áa]n?|permite|permiten|garantizar[áa]n?|garantiza|garantizan|dar[áa]n?|ayudar[áa]n?)\b")
+
+
 def fix_register(text: str) -> str:
-    return _REG_RE.sub(lambda m: _match_case(m.group(0), _REGISTRO[m.group(0).lower()]), text or "")
+    t = _REG_RE.sub(lambda m: _match_case(m.group(0), _REGISTRO[m.group(0).lower()]), text or "")
+    return _NOS.sub(lambda m: ("L" if m.group(1) == "N" else "l") + "es " + m.group(2), t)
 
 
 def _fold(s: str) -> str:
