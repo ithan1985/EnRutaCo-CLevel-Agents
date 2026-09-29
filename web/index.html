@@ -108,7 +108,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .btn.stop{border-color:var(--bad);color:var(--bad)}
 .btn[hidden]{display:none}
 .status{min-height:1.4em;margin:10px 0 0;font-size:.88rem;color:var(--muted)}
-.status.err{color:var(--bad)}
+.status.err,.hint.err{color:var(--bad)}
 
 .history{margin-top:40px;max-width:52em}
 .history h2{font-size:.95rem;margin:0 0 8px;color:var(--muted)}
@@ -140,6 +140,13 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .voice small{display:block;color:var(--muted);font-size:.74rem;line-height:1.3}
 .voice b{font-size:.86rem}
 .adv{margin-top:22px}
+.grupoSel select{min-width:150px;border-color:var(--yellow)}
+.grupoSel[hidden]{display:none}
+.presionar{margin:6px 0 4px;padding:8px 12px;border-left:4px solid var(--bad);background:var(--surface);font-size:.88rem}
+.presionar[hidden]{display:none}
+.presionar ul{margin:4px 0 0;padding-left:18px}
+#gruposJson{min-height:110px;font-family:ui-monospace,Consolas,monospace;font-size:.8rem}
+.gbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .adv summary{cursor:pointer;font-size:.9rem;font-weight:700;color:var(--accent);padding:4px 0}
 .chip.done{background:var(--ok);color:var(--on-primary);border-color:var(--ok);cursor:default}
 .quienRow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.85rem;color:var(--muted)}
@@ -155,6 +162,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
   </div>
   <div class="ctrls">
     <label class="field">Semana del caso <select id="week"></select></label>
+    <label class="field grupoSel" id="grupoField" hidden>Grupo <select id="grupo"><option value="">Elegir grupo…</option></select></label>
     <label class="field">Equipo consultor <input id="team" type="text" placeholder="Nombre del equipo" maxlength="60" autocomplete="off"></label>
     <label class="field">Modelo <select id="mode"></select></label>
     <button class="tog" id="tVoice" aria-pressed="true" type="button">Voz</button>
@@ -201,6 +209,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <h3>Propuesta del equipo</h3>
     <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
     <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
+    <div class="presionar" id="presionar" hidden></div>
     <h3>Integrantes del equipo</h3>
     <p class="hint">Nombres separados por coma. Aparecen en «Responde:» y como chips (gris = no ha intervenido, verde = ya intervino).</p>
     <input type="text" id="integrantes" placeholder="Ej.: Ana, Luis, Sofía" maxlength="200">
@@ -221,6 +230,15 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <div class="inl"><label for="score">Nota (0–5)</label><input id="score" type="number" min="0" max="5" step="0.1"></div>
     <details class="adv">
       <summary>Avanzado</summary>
+      <h3>Cargar grupos</h3>
+      <p class="hint">Pega el JSON de los grupos (o elige un archivo .json) y pulsa «Cargar grupos». Después basta con elegir el grupo arriba: se precargan nombre, propuesta, integrantes, selección del catálogo y focos por miembro del Comité. Queda guardado solo en este navegador.</p>
+      <textarea id="gruposJson" placeholder='{"grupos":[{"nombre":"Grupo 1","integrantes":["Ana","Luis"],"propuesta":"1. PROBLEMA: ...","seleccion":["E2","E4","H1","H2"],"focos":{"cfo":"supuestos del ROI","ti":"dependencias entre olas","ceo":"decisión: qué aprobar, cuánto y cuándo"},"presionar":["ROI sin supuesto de retención"]}]}'></textarea>
+      <input type="file" id="gruposFile" accept=".json,application/json">
+      <div class="gbtns">
+        <button class="btn" id="bGrupos" type="button">Cargar grupos</button>
+        <button class="btn" id="bGruposClear" type="button">Borrar grupos</button>
+      </div>
+      <p class="hint" id="gruposMsg"></p>
       <h3>Rendimiento del último turno</h3>
       <p class="hint" id="perf">Aún no hay mediciones.</p>
       <h3>Sala de voces</h3>
@@ -257,7 +275,8 @@ const S = {
   week: 8, team: "", mode: "quick", voice: true, panel: false, active: "ceo", focus: "",
   T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null, escala: 1,
   sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false,
-  integrantes: [], intervinieron: new Set(), timer: {secs: 0, running: false, id: null, shown: false}
+  integrantes: [], intervinieron: new Set(), timer: {secs: 0, running: false, id: null, shown: false},
+  grupos: [], grupoId: "", focos: {}, presionar: []
 };
 let uid = 0;
 const P = id => CFG.personas[id];
@@ -268,7 +287,8 @@ const itemById = id => S.T.find(x=>x.id===id) || null;
 /* ───── sesión persistente en el navegador ───── */
 function saveSession(){
   pref("session", JSON.stringify({T:S.T, week:S.week, team:S.team, uid, ctx:$("#ctx").value, sel:[...S.sel],
-    useBudget:S.useBudget, integrantes:S.integrantes, intervinieron:[...S.intervinieron]}));
+    useBudget:S.useBudget, integrantes:S.integrantes, intervinieron:[...S.intervinieron],
+    grupoId:S.grupoId, focos:S.focos, presionar:S.presionar}));
 }
 function loadSession(){
   try{
@@ -276,6 +296,7 @@ function loadSession(){
     S.T = d.T||[]; S.week = d.week||8; S.team = d.team||""; uid = d.uid||0;
     $("#ctx").value = d.ctx||""; S.useBudget = !!d.useBudget; (d.sel||[]).forEach(c=>S.sel.add(c));
     S.integrantes = d.integrantes||[]; (d.intervinieron||[]).forEach(n=>S.intervinieron.add(n));
+    S.grupoId = d.grupoId||""; S.focos = d.focos||{}; S.presionar = d.presionar||[];
   }catch(e){}
 }
 
@@ -333,8 +354,18 @@ async function boot(){
     if (armed){ clearTimeout(armed); armed=null; } b.textContent="Reiniciar sesión";
     S.T=[]; S.retry=false; stopAudio(); $("#answer").value=""; setStatus("");
     S.integrantes=[]; S.intervinieron=new Set(); $("#integrantes").value=""; renderIntegrantes();
+    S.grupoId=""; S.focos={}; S.presionar=[]; renderGrupos(); renderPresionar();
     saveSession(); renderAll();
   });
+
+  try{ const g = JSON.parse(pref("grupos")||"null"); if (g) S.grupos = normalizarGrupos(g); }catch(e){}
+  $("#grupo").addEventListener("change", e=>{ if(e.target.value) cargarGrupo(e.target.value); });
+  $("#bGrupos").addEventListener("click", ()=>importarGrupos($("#gruposJson").value));
+  $("#gruposFile").addEventListener("change", async e=>{ const f=e.target.files[0]; if(!f) return;
+    const t=await f.text(); $("#gruposJson").value=t; importarGrupos(t); e.target.value=""; });
+  $("#bGruposClear").addEventListener("click", ()=>{ S.grupos=[]; S.grupoId=""; pref("grupos",""); renderGrupos();
+    $("#gruposMsg").textContent="Grupos borrados de este navegador."; saveSession(); });
+  renderGrupos(); renderPresionar();
 
   applyPanel(); renderBudget(); buildVoices(); setupMic(); renderIntegrantes(); renderAll(); pollHealth();
 }
@@ -508,7 +539,7 @@ async function run(cid, kind, body){
     else setStatus(ERR[e.code] || e.message || "No se pudo generar la respuesta.", true);
   }finally{ S.busy=false; S.ctl=null; S.live=null; saveSession(); renderAll(); }
 }
-function ask(cid){ if(!canRun()) return; S.active=cid; run(cid,"open",payload(cid)); }
+function ask(cid){ if(!canRun()) return; S.active=cid; focoPara(cid); run(cid,"open",payload(cid)); }
 function submitAnswer(){
   if(!canRun()) return; const q=lastQ(); if(!q||q.closed) return; const li=lastItem();
   if(li.kind==="q"){
@@ -524,7 +555,70 @@ function nextSeat(){ const cur=lastQ()?lastQ().cid:S.active, o=CFG.orden, i=o.in
 function crossTarget(){ const q=lastQ(); if(!q) return null; const r=P(q.cid).rivales; return r[S.crossN % r.length]; }
 function cross(){
   if(!canRun()) return; const q=lastQ(); if(!q) return; const tgt=crossTarget(); if(!tgt) return;
-  S.crossN++; S.active=tgt; run(tgt,"open",payload(tgt,{thread:threadList(),cross_from:q.cid}));
+  S.crossN++; S.active=tgt; focoPara(tgt); run(tgt,"open",payload(tgt,{thread:threadList(),cross_from:q.cid}));
+}
+
+/* ───── grupos precargados (Avanzado → Cargar grupos) ───── */
+const CIDS_FOCO = ["ceo","ti","cs","cfo","dn","ops"];
+function normalizarGrupos(raw){
+  const lista = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.grupos) ? raw.grupos : null);
+  if (!lista) throw new Error("El JSON debe ser una lista o un objeto con la clave \"grupos\".");
+  const validos = new Set((CFG?.catalogo||[]).map(x=>x.c));
+  return lista.map((g,i)=>{
+    const nombre = String(g.nombre||"").trim();
+    if (!nombre) throw new Error(`El grupo #${i+1} no tiene "nombre".`);
+    const str = v => (typeof v==="string" ? v : "").trim();
+    const focos = {};
+    for (const cid of CIDS_FOCO){ const f = str((g.focos||{})[cid]); if (f) focos[cid]=f.slice(0,120); }
+    return {
+      id: str(g.id) || `g${i+1}`, nombre: nombre.slice(0,60),
+      integrantes: [...new Set((Array.isArray(g.integrantes)?g.integrantes:[]).map(x=>String(x).trim()).filter(Boolean))],
+      propuesta: str(g.propuesta).slice(0,4000),
+      seleccion: (Array.isArray(g.seleccion)?g.seleccion:[]).map(x=>String(x).trim().toUpperCase()).filter(c=>validos.has(c)),
+      focos, presionar: (Array.isArray(g.presionar)?g.presionar:[]).map(x=>String(x).trim()).filter(Boolean).slice(0,6)
+    };
+  });
+}
+function importarGrupos(texto){
+  const msg = $("#gruposMsg");
+  try{
+    const grupos = normalizarGrupos(JSON.parse(texto));
+    if (!grupos.length) throw new Error("No hay grupos en el JSON.");
+    S.grupos = grupos; pref("grupos", JSON.stringify(grupos)); renderGrupos();
+    msg.textContent = `${grupos.length} grupo(s) cargado(s): ${grupos.map(g=>g.nombre).join(", ")}. Elige uno en «Grupo», arriba.`;
+    msg.className = "hint";
+  }catch(e){ msg.textContent = "No se pudo cargar: " + e.message; msg.className = "hint err"; }
+}
+function renderGrupos(){
+  const sel = $("#grupo"); if (!sel) return;
+  sel.replaceChildren(h("option",{value:"",text:"Elegir grupo…"}), ...S.grupos.map(g=>h("option",{value:g.id,text:g.nombre})));
+  sel.value = S.grupos.some(g=>g.id===S.grupoId) ? S.grupoId : "";
+  $("#grupoField").hidden = !S.grupos.length;
+}
+function renderPresionar(){
+  const box = $("#presionar"); if (!box) return;
+  box.hidden = !S.presionar.length;
+  box.replaceChildren(h("b",{text:"Dónde presionar"}), h("ul",null,S.presionar.map(t=>h("li",{text:t}))));
+}
+function focoPara(cid){
+  if (!S.grupoId) return;                // sin grupo cargado: se respeta lo que haya escrito el docente
+  const f = S.focos[cid] || "";          // con grupo: cada miembro trae su foco, o ninguno (no se arrastra el anterior)
+  S.focus = f; $("#focus").value = f;
+}
+function cargarGrupo(id){
+  const g = S.grupos.find(x=>x.id===id); if (!g) return;
+  if (S.busy){ setStatus("Espera a que termine el turno en curso para cambiar de grupo.", true); renderGrupos(); return; }
+  if (S.T.length) exportSession();       // acta automática del grupo anterior antes de limpiar
+  S.T=[]; S.retry=false; S.crossN=0; stopAudio(); $("#answer").value="";
+  S.grupoId = g.id; S.team = g.nombre; $("#team").value = g.nombre;
+  $("#ctx").value = g.propuesta;
+  S.sel = new Set(CFG.catalogo.filter(x=>x.t==="O").map(x=>x.c)); g.seleccion.forEach(c=>S.sel.add(c));
+  S.useBudget = g.seleccion.length > 0; $("#useBudget").checked = S.useBudget;
+  S.integrantes = g.integrantes; S.intervinieron = new Set(); $("#integrantes").value = g.integrantes.join(", ");
+  S.focos = g.focos; S.presionar = g.presionar;
+  S.active = CFG.semanas[S.week-1].lead; S.focus = ""; $("#focus").value = ""; focoPara(S.active);
+  renderIntegrantes(); renderBudget(); renderPresionar(); renderGrupos(); saveSession(); renderAll();
+  setStatus(`Grupo cargado: ${g.nombre}. Revisa la propuesta en el Panel docente y da la palabra.`);
 }
 
 /* ───── voz: reproducción y animación del retrato ───── */
@@ -603,7 +697,7 @@ const avatar = (id, cls="av") => h("div",{class:cls,"aria-hidden":"true"}, h("im
 function renderSeats(){
   const nav=$("#seats"); nav.replaceChildren(); const lead=CFG.semanas[S.week-1].lead;
   for (const id of CFG.orden){ const p=P(id);
-    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.active=id;renderAll();}},
+    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.active=id;focoPara(id);renderAll();}},
       id===lead?h("span",{class:"lead","aria-hidden":"true"}):null, avatar(id), h("span",{class:"nm",text:p.nombre}), h("span",{class:"rl",text:p.cargo}));
     nav.append(b);
   }
@@ -703,7 +797,7 @@ function exportSession(){
       if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="") out.push(`Nota del docente: ${x.score}`);
     } else out.push(`Respuesta del equipo: ${x.text}`);
   }
-  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:"sesion-comite-enrutaco.md"});
+  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${(S.team||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
   document.body.append(a); a.click(); a.remove(); setStatus("Sesión guardada.");
 }
 
