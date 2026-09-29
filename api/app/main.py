@@ -284,7 +284,11 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                             spoken = True
                             if raw.strip():
                                 early = sanitize(kind, {speak_key: raw.strip(), "vacios": []}, keep_terms, dados)[speak_key]
-                                yield sse({"type": "speak", "text": early})
+                                # Junta: si la pregunta copia la de otro miembro se va a regenerar; no se anticipa la voz.
+                                copia = kind == "open" and req.junta and any(
+                                    a.text and a.cid != req.cid and similar(early, a.text) for a in req.asked)
+                                if not copia:
+                                    yield sse({"type": "speak", "text": early})
                 if stats:
                     log.info("LLM %s %s: prefill %s tok en %ss (%s t/s) · gen %s tok (%s t/s)", model, kind,
                              stats.get("prompt_tokens"), stats.get("prefill_s"), stats.get("prefill_tps"),

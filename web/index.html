@@ -621,12 +621,12 @@ async function run(cid, kind, body, opts={}){
     let final;
     if(kind==="open"){
       if(opts.reemplaza){ const i=S.T.findIndex(x=>x.id===opts.reemplaza); if(i>=0) S.T.splice(i,1); }   // «Cambiar la pregunta»
-      S.T.push({kind:"q",id:++uid,cid,text:data.pregunta,follow:false,meta:{evalua:data.evalua,senales:data.senales,trampa:data.trampa,vacios:[]},obs:"",score:""});
+      S.T.push({kind:"q",id:++uid,ts:Date.now(),cid,text:data.pregunta,follow:false,meta:{evalua:data.evalua,senales:data.senales,trampa:data.trampa,vacios:[]},obs:"",score:""});
       final = data.pregunta;
     } else {
       if(enJunta) data.seguimiento = "";   // modo junta: el miembro reacciona y cede la palabra
       const seg=data.seguimiento||"";
-      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,junta:enJunta,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
+      S.T.push({kind:"q",id:++uid,ts:Date.now(),cid,text:seg,follow:true,junta:enJunta,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
       final = `${data.reaccion} ${seg}`.trim();
     }
     // La voz debe decir exactamente lo que muestra la pantalla: si lo que se habló en vivo (texto crudo del
@@ -669,7 +669,7 @@ function submitAnswer(){
     const raw=$("#answer").value.trim(); if(!raw) return;
     const quien=$("#quien").value;
     if(quien){ S.intervinieron.add(quien); renderIntegrantes(); }
-    S.T.push({kind:"a",id:++uid,text:quien?`${quien}: ${raw}`:raw,quien}); $("#answer").value="";
+    S.T.push({kind:"a",id:++uid,ts:Date.now(),text:quien?`${quien}: ${raw}`:raw,quien}); $("#answer").value="";
     saveSession();   // si la página se recarga durante la evaluación, la respuesta no se pierde
   }
   else if(!S.retry) return;
@@ -1035,6 +1035,9 @@ function renderPerf(){
 function renderAll(){ renderSeats(); renderCurrent(); renderHistory(); renderMeta(); renderCalificacion(); syncControls(); }
 
 /* ───── exportar ───── */
+const hhmm = t => new Date(t).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+// Sello local para el nombre del archivo (AAAAMMDD-HHMM): las actas del mismo grupo no se sobrescriben.
+const sello = () => { const d=new Date(), z=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`; };
 const celda = t => String(t==null?"":t).replace(/\|/g,"\\|").replace(/\s+/g," ").trim() || "—";
 function filasJunta(){
   // Una fila por miembro en el orden fijo de la junta: quién respondió y cómo lo leyó el Comité.
@@ -1050,7 +1053,7 @@ function filasJunta(){
 }
 function exportSession(){
   const w=CFG.semanas[S.week-1], b=budgetView();
-  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${equipoCorto()||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`];
+  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha y hora: ${new Date().toLocaleDateString("es-CO")} ${hhmm(Date.now())}`+(S.T.length&&S.T[0].ts?` (primera pregunta ${hhmm(S.T[0].ts)}; último registro ${hhmm(S.T[S.T.length-1].ts)})`:""),`- Equipo: ${equipoCorto()||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`];
   if(S.junta) out.push("- Modalidad: junta (una pregunta por miembro del Comité, orden fijo, sin repreguntas)");
   const nf = notaValida(S.notaFinal);
   out.push(`- Nota final del docente: ${nf===null ? `«${S.notaFinal}» (fuera de 0–5: revisar)` : nf==="" ? "pendiente" : num(nf)+" / 5"}`, "");
@@ -1083,7 +1086,7 @@ function exportSession(){
         // Junta: la evaluación va en la misma sección que la pregunta del miembro (una sección por miembro).
         out.push(`Evaluación del Comité: ${x.reaccion||"—"}`+(x.lectura?` (${LECT[x.lectura]}${x.guia?"; guía automática":""})`:""));
       } else {
-        n++; out.push("",`### ${n}. ${p.nombre} (${p.cargo})${x.follow?" — repregunta":""}`);
+        n++; out.push("",`### ${n}. ${p.nombre} (${p.cargo})${x.follow?" — repregunta":""}${x.ts?` · ${hhmm(x.ts)}`:""}`);
         if(x.reaccion) out.push(`Reacción: ${x.reaccion}`+(x.lectura?` (${LECT[x.lectura]}${x.estado?`; preocupación ${x.estado}`:""})`:""));
         if(x.cierre) out.push(CIERRE[x.cierre]);
         if(x.text) out.push(`Pregunta: ${x.text}`);
@@ -1093,7 +1096,7 @@ function exportSession(){
       if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="" && x.score!=null){ const v=notaValida(x.score); out.push(`Nota del docente: ${v===null ? `«${x.score}» (fuera de 0–5)` : num(v)}`); }
     } else out.push(`Respuesta del equipo: ${x.text}`);
   }
-  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${(equipoCorto()||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
+  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${sello()}-${(equipoCorto()||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
   document.body.append(a); a.click(); a.remove(); setStatus("Sesión guardada.");
 }
 
