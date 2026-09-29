@@ -173,6 +173,8 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 .adv summary{cursor:pointer;font-size:.9rem;font-weight:700;color:var(--accent);padding:4px 0}
 .chip.done{background:var(--ok);color:var(--on-primary);border-color:var(--ok);cursor:default}
 .quienRow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.85rem;color:var(--muted)}
+body.compartir .soloDocente{display:none}
+#bShare[aria-pressed="true"]{border-color:var(--yellow)}
 .quienRow select{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px}
 </style>
 </head>
@@ -212,6 +214,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
       </div>
       <div class="actions">
         <button class="btn primary" id="bApertura" type="button" hidden>Apertura del CEO</button>
+        <button class="btn primary" id="bCierreCEO" type="button" hidden>Cierre del CEO</button>
         <button class="btn primary" id="bAnswer" type="button">Enviar respuesta</button>
         <button class="btn" id="bAsk" type="button">Dar la palabra</button>
         <button class="btn" id="bCross" type="button">Intervención cruzada</button>
@@ -227,10 +230,14 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
   <aside class="panel" id="panel" hidden aria-label="Panel docente">
     <span class="timer" id="timerTop" hidden aria-live="polite"></span>
     <h2>Panel docente</h2>
+    <button class="btn" id="bShare" type="button" aria-pressed="false">Ocultar notas del docente</button>
+    <p class="hint" id="shareInfo" hidden>Pantalla compartida: están ocultos la propuesta, «Dónde presionar», la lectura, la calificación, las observaciones y Avanzado.</p>
+    <div class="soloDocente">
     <h3>Propuesta del equipo</h3>
     <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
     <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
     <div class="presionar" id="presionar" hidden></div>
+    </div>
     <h3>Integrantes del equipo</h3>
     <label class="field grupoSel" id="grupoPanelField" hidden>Grupo <select id="grupoPanel"><option value="">Elegir grupo…</option></select></label>
     <label class="field">Nombre del equipo <input id="team" type="text" placeholder="Nombre del equipo" maxlength="60" autocomplete="off"></label>
@@ -239,7 +246,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <h3>Modo junta</h3>
     <label class="chkline"><input type="checkbox" id="junta"> 1 pregunta por miembro, orden fijo y sin repreguntas</label>
     <p class="hint" id="juntaInfo">Mismas condiciones para todos los grupos: apertura del CEO, TI → Servicio al Cliente → CFO → Negocio → Operaciones y cierre del CEO con la decisión.</p>
-    <h3>Temporizador de preguntas</h3>
+    <h3>Temporizador</h3>
     <div class="gbtns">
       <button class="btn" id="bTimer15" type="button">Presentación 15 min</button>
       <button class="btn" id="bTimer" type="button">Preguntas 10 min</button>
@@ -250,18 +257,21 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <div class="chips" id="chips"></div>
     <div class="bsum" id="bsum"></div>
     <input type="checkbox" id="useBudget" hidden>
+    <div class="soloDocente">
     <h3>Lectura de la pregunta actual</h3>
     <div class="meta" id="meta"></div>
     <h3>Propuesta de calificación</h3>
     <p class="hint">Calculada a partir de la lectura del Comité en cada respuesta: convence 5,0 · a medias 3,5 · no convence 2,0; −0,5 si hubo que activar la guía automática («no entiendo») y −0,5 si algún integrante no intervino. Es una propuesta: la nota final la decides tú.</p>
     <div class="califica" id="califica"><span class="hint">Aparece cuando el Comité evalúa la primera respuesta.</span></div>
-    <h3>Observación y nota del docente</h3>
+    <div class="inl"><label for="notaFinal">Nota final del grupo (0–5)</label><input id="notaFinal" type="number" min="0" max="5" step="0.1"></div>
+    <button class="btn" id="bUsarNota" type="button" disabled>Usar la nota propuesta</button>
+    <h3>Observación de la respuesta actual</h3>
     <textarea id="obs" placeholder="Tu observación sobre la respuesta del equipo"></textarea>
-    <div class="inl"><label for="score">Nota (0–5)</label><input id="score" type="number" min="0" max="5" step="0.1"></div>
+    <div class="inl"><label for="score">Nota de esta respuesta (0–5)</label><input id="score" type="number" min="0" max="5" step="0.1"></div>
     <details class="adv">
       <summary>Avanzado</summary>
       <h3>Cargar grupos</h3>
-      <p class="hint">Pega el JSON de los grupos (o elige un archivo .json) y pulsa «Cargar grupos». Después basta con elegir el grupo arriba: se precargan nombre, propuesta, integrantes, selección del catálogo y focos por miembro del Comité. Queda guardado solo en este navegador.</p>
+      <p class="hint">Pega el JSON de los grupos (o elige un archivo .json) y pulsa «Cargar grupos». Después basta con elegir el grupo en «Integrantes del equipo»: se precargan nombre, propuesta, integrantes, selección del catálogo y focos por miembro del Comité. Queda guardado solo en este navegador.</p>
       <textarea id="gruposJson" placeholder='{"grupos":[{"nombre":"Grupo 1","integrantes":["Ana","Luis"],"propuesta":"1. PROBLEMA: ...","seleccion":["E2","E4","H1","H2"],"focos":{"cfo":"supuestos del ROI","ti":"dependencias entre olas","ceo":"decisión: qué aprobar, cuánto y cuándo"},"presionar":["ROI sin supuesto de retención"]}]}'></textarea>
       <input type="file" id="gruposFile" accept=".json,application/json">
       <div class="gbtns">
@@ -276,6 +286,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
       <div class="voices" id="voices"></div>
       <button class="btn" id="bReload" type="button">Recargar personajes y voces</button>
     </details>
+    </div>
     <h3>Sesión</h3>
     <button class="btn" id="bExport" type="button">Guardar sesión (.md)</button>
     <button class="btn" id="bClear" type="button">Reiniciar sesión</button>
@@ -307,7 +318,9 @@ const S = {
   T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null,
   sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false,
   integrantes: [], intervinieron: new Set(), timer: {secs: 0, running: false, id: null, shown: false},
-  grupos: [], grupoId: "", focos: {}, presionar: [], junta: false
+  grupos: [], grupoId: "", focos: {}, presionar: [], junta: false,
+  escena: null,          // {tipo:"apertura"|"cierre"}: el CEO habla con texto fijo (sin LLM)
+  notaFinal: ""          // nota final del grupo que decide el docente
 };
 /* Modo junta: mismo orden, mismos focos y una sola pregunta por miembro para todos los grupos. */
 const JUNTA = ["ti","cs","cfo","dn","ops","ceo"];
@@ -321,6 +334,9 @@ const JUNTA_FOCOS = {
 };
 const juntaHecho = () => new Set(S.T.filter(x=>x.kind==="q" && !x.follow && JUNTA.includes(x.cid)).map(x=>x.cid));
 const juntaSiguiente = () => { const h=juntaHecho(); return JUNTA.find(c=>!h.has(c)) || null; };
+// Evaluadas: el miembro ya reaccionó a la respuesta del equipo. La junta termina cuando las 6 están evaluadas.
+const juntaEvaluadas = () => new Set(S.T.filter(x=>x.kind==="q" && x.follow && x.lectura && JUNTA.includes(x.cid)).map(x=>x.cid));
+const juntaCompleta = () => { const e=juntaEvaluadas(); return JUNTA.every(c=>e.has(c)); };
 let uid = 0;
 const P = id => CFG.personas[id];
 const lastQ = () => { for (let i=S.T.length-1;i>=0;i--) if (S.T[i].kind==="q") return S.T[i]; return null; };
@@ -331,15 +347,16 @@ const itemById = id => S.T.find(x=>x.id===id) || null;
 function saveSession(){
   pref("session", JSON.stringify({T:S.T, week:S.week, team:S.team, uid, ctx:$("#ctx").value, sel:[...S.sel],
     useBudget:S.useBudget, integrantes:S.integrantes, intervinieron:[...S.intervinieron],
-    grupoId:S.grupoId, focos:S.focos, presionar:S.presionar}));
+    grupoId:S.grupoId, focos:S.focos, presionar:S.presionar, notaFinal:S.notaFinal}));
 }
+function setNotaFinal(v){ S.notaFinal = v==null ? "" : String(v); const el=$("#notaFinal"); if(el) el.value=S.notaFinal; }
 function loadSession(){
   try{
     const d = JSON.parse(pref("session")||"null"); if (!d) return;
     S.T = d.T||[]; S.week = d.week||8; S.team = d.team||""; uid = d.uid||0;
     $("#ctx").value = d.ctx||""; S.useBudget = !!d.useBudget; (d.sel||[]).forEach(c=>S.sel.add(c));
     S.integrantes = d.integrantes||[]; (d.intervinieron||[]).forEach(n=>S.intervinieron.add(n));
-    S.grupoId = d.grupoId||""; S.focos = d.focos||{}; S.presionar = d.presionar||[];
+    S.grupoId = d.grupoId||""; S.focos = d.focos||{}; S.presionar = d.presionar||[]; S.notaFinal = d.notaFinal||"";
   }catch(e){}
 }
 
@@ -362,7 +379,7 @@ async function boot(){
   $("#integrantes").value = S.integrantes.join(", ");
   if (!S.T.length) S.active = CFG.semanas[S.week-1].lead; else S.active = lastQ()?.cid || S.active;
 
-  ws.addEventListener("change", ()=>{ S.week=+ws.value; if(!S.T.length) S.active=CFG.semanas[S.week-1].lead; renderAll(); saveSession(); });
+  ws.addEventListener("change", ()=>{ S.week=+ws.value; if(!S.T.length) S.active = S.junta ? (juntaSiguiente()||JUNTA[0]) : CFG.semanas[S.week-1].lead; renderAll(); saveSession(); });
   $("#team").addEventListener("input", e=>{ S.team=e.target.value.trim(); saveSession(); });
   md.addEventListener("change", e=>{ S.mode=e.target.value; pref("mode",S.mode); syncControls(); });
   $("#tVoice").addEventListener("click", e=>{ S.voice=!S.voice; e.currentTarget.setAttribute("aria-pressed",String(S.voice)); pref("voice",S.voice?1:0); if(!S.voice) stopAudio(); });
@@ -378,6 +395,10 @@ async function boot(){
   $("#useBudget").addEventListener("change", e=>{ S.useBudget=e.target.checked; saveSession(); });
   $("#obs").addEventListener("input", e=>{ const q=itemById(S.obsFor); if(q){ q.obs=e.target.value; saveSession(); } });
   $("#score").addEventListener("input", e=>{ const q=itemById(S.obsFor); if(q){ q.score=e.target.value; saveSession(); } });
+  setNotaFinal(S.notaFinal);
+  $("#notaFinal").addEventListener("input", e=>{ S.notaFinal=e.target.value; saveSession(); });
+  $("#bUsarNota").addEventListener("click", ()=>{ const c=calificacion(); if(!c) return;
+    setNotaFinal(c.nota.toFixed(1)); saveSession(); setStatus(`Nota final del grupo: ${num(c.nota.toFixed(1))} / 5 (queda en el acta).`); });
   $("#answer").addEventListener("input", syncControls);
   $("#answer").addEventListener("keydown", e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); submitAnswer(); } });
   $("#bAsk").addEventListener("click", ()=>ask(S.active));
@@ -393,7 +414,7 @@ async function boot(){
     if (S.busy) return; const b=e.currentTarget;
     if (S.T.length && !armed){ b.textContent="Confirmar: se pierde la sesión"; armed=setTimeout(()=>{armed=null;b.textContent="Reiniciar sesión";},4000); return; }
     if (armed){ clearTimeout(armed); armed=null; } b.textContent="Reiniciar sesión";
-    S.T=[]; S.retry=false; stopAudio(); $("#answer").value=""; setStatus("");
+    S.T=[]; S.retry=false; S.escena=null; stopAudio(); $("#answer").value=""; setStatus(""); setNotaFinal("");
     S.integrantes=[]; S.intervinieron=new Set(); $("#integrantes").value=""; renderIntegrantes();
     S.grupoId=""; S.focos={}; S.presionar=[]; renderGrupos(); renderPresionar();
     S.crossN=0; S.focus=""; $("#focus").value=""; if(S.junta){ S.active=JUNTA[0]; focoPara(JUNTA[0]); }
@@ -415,9 +436,15 @@ async function boot(){
     if(S.junta){ const sig=juntaSiguiente(); if(sig){ S.active=sig; focoPara(sig); } }
     renderAll();
   });
-  $("#bApertura").addEventListener("click", ()=>{ S.apertura=true; renderAll(); setStatus("Apertura del CEO…"); speak("ceo", textoApertura(), true); });
+  const aplicarCompartir = on => { document.body.classList.toggle("compartir", on); $("#bShare").setAttribute("aria-pressed", String(on));
+    $("#bShare").textContent = on ? "Mostrar notas del docente" : "Ocultar notas del docente"; $("#shareInfo").hidden = !on; };
+  aplicarCompartir(pref("compartir")==="1");
+  $("#bShare").addEventListener("click", ()=>{ const on=!document.body.classList.contains("compartir"); pref("compartir", on?1:0); aplicarCompartir(on); });
+  $("#bApertura").addEventListener("click", ()=>iniciarEscena("apertura"));
+  $("#bCierreCEO").addEventListener("click", ()=>iniciarEscena("cierre"));
 
   applyPanel(); renderBudget(); buildVoices(); setupMic(); renderIntegrantes(); renderAll(); pollHealth();
+  const fin = +(pref("timerEnd")||0); if (fin > Date.now()) startTimer(0, fin);
 }
 
 function applyPanel(){
@@ -442,19 +469,21 @@ function renderTimerUI(){
   $("#bTimer").textContent = running ? "Detener temporizador" : "Preguntas 10 min";
   $("#bTimer15").hidden = running;
 }
-function startTimer(total=600){
+// Se guarda la hora de fin: el conteo no deriva y sobrevive a una recarga accidental de la página.
+function startTimer(total=600, end){
   if (S.timer.id) clearInterval(S.timer.id);
-  S.timer.secs = total; S.timer.running = true; S.timer.shown = true;
-  S.timer.id = setInterval(()=>{
-    S.timer.secs--;
-    if (S.timer.secs<=0){ S.timer.secs=0; S.timer.running=false; clearInterval(S.timer.id); S.timer.id=null; }
+  S.timer.end = end || Date.now()+total*1000; pref("timerEnd", S.timer.end);
+  const tick = ()=>{
+    S.timer.secs = Math.max(0, Math.ceil((S.timer.end-Date.now())/1000));
+    if (S.timer.secs<=0 && S.timer.id){ S.timer.running=false; clearInterval(S.timer.id); S.timer.id=null; pref("timerEnd",""); }
     renderTimerUI();
-  }, 1000);
-  renderTimerUI();
+  };
+  S.timer.running = true; S.timer.shown = true;
+  S.timer.id = setInterval(tick, 250); tick();
 }
 function stopTimer(){
   if (S.timer.id) clearInterval(S.timer.id);
-  S.timer.id=null; S.timer.running=false; renderTimerUI();
+  S.timer.id=null; S.timer.running=false; pref("timerEnd",""); renderTimerUI();
 }
 function showBanner(msg, bad, pct){
   const b = $("#banner"); b.hidden = !msg; b.className = "banner"+(bad?" bad":""); b.replaceChildren();
@@ -549,14 +578,18 @@ function setStatus(msg, err){ const s=$("#status"); s.textContent=msg||""; s.cla
 const canRun = () => !S.busy && S.ready[S.mode];
 
 async function run(cid, kind, body){
-  if(S.apertura){ S.apertura=false; }
+  if(S.escena){ S.escena=null; stopAudio(); }
   const enJunta = S.junta && kind==="follow";
-  S.busy=true; S.ctl=new AbortController(); S.live={cid,kind,reaccion:"",text:"",spoken:false,spokenText:"",noEarlySpeech:enJunta}; setStatus(""); renderAll();
+  // La pregunta (y la reacción en modo junta) se dice con el texto ya saneado que envía el servidor (evento «speak»):
+  // la voz arranca antes de que terminen las notas y no se corrige en voz alta. Con un servidor sin ese evento se
+  // habla al final. La repregunta normal conserva la voz anticipada con el texto crudo.
+  S.busy=true; S.ctl=new AbortController(); S.live={cid,kind,reaccion:"",text:"",spoken:false,spokenText:"",noEarlySpeech:kind==="open"||!!S.junta}; setStatus(""); renderAll();
   const key = kind==="open" ? "pregunta" : "seguimiento";
   try{
     const done = await streamTurn(kind==="open"?"/api/ask":"/api/follow", body, S.ctl.signal, ev=>{
       if(!S.live) return;
       if(ev.type==="retry"){ stopAudio(); Object.assign(S.live,{raw:"",reaccion:"",text:"",spoken:false,spokenText:"",retry:true,noEarlySpeech:true}); renderCurrent(); return; }
+      if(ev.type==="speak"){ if(!S.live.spoken && !S.live.retry && ev.text){ S.live.spoken=true; S.live.spokenText=ev.text; speak(cid, ev.text); } return; }
       S.live.raw=(S.live.raw||"")+ev.t;
       const r=field(S.live.raw,"reaccion"), q=field(S.live.raw,key);
       S.live.reaccion = kind==="follow" ? r.v : ""; S.live.text = q.v;
@@ -574,7 +607,7 @@ async function run(cid, kind, body){
     } else {
       if(enJunta) data.seguimiento = "";   // modo junta: el miembro reacciona y cede la palabra
       const seg=data.seguimiento||"";
-      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
+      S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,junta:enJunta,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
       final = `${data.reaccion} ${seg}`.trim();
     }
     // La voz debe decir exactamente lo que muestra la pantalla: si lo que se habló en vivo (texto crudo del
@@ -585,18 +618,29 @@ async function run(cid, kind, body){
     if(enJunta){ const sig=juntaSiguiente(); if(sig){ S.active=sig; focoPara(sig); } }
   }catch(e){
     if(kind==="follow") S.retry=true;
+    if(S.live && S.live.spoken) stopAudio();   // no dejar sonando un texto que no quedó en pantalla
     if(e.name==="AbortError"){ setStatus("Detenido."); stopAudio(); }
     else setStatus(ERR[e.code] || e.message || "No se pudo generar la respuesta.", true);
   }finally{ S.busy=false; S.ctl=null; S.live=null; saveSession(); renderAll(); }
 }
-function ask(cid){ if(!canRun()) return; S.active=cid; focoPara(cid); run(cid,"open",payload(cid)); }
+// Junta: la pregunta de un miembro se puede cambiar mientras el equipo no la haya respondido (p. ej., si salió
+// confusa); la descartada no cuenta ni va al acta. Respondida, el miembro ya no pregunta más.
+const preguntaCambiable = cid => { const li=lastItem(); return !!li && li.kind==="q" && !li.follow && li.cid===cid; };
+function ask(cid){
+  if(!canRun()) return;
+  if(S.junta && juntaHecho().has(cid)){
+    if(!preguntaCambiable(cid)){ setStatus(`${P(cid).corto} ya hizo su pregunta en esta junta.`, true); return; }
+    S.T.pop(); stopAudio();
+  }
+  S.active=cid; focoPara(cid); run(cid,"open",payload(cid));
+}
 function submitAnswer(){
   if(!canRun()) return; const q=lastQ(); if(!q||q.closed) return; const li=lastItem();
   if(li.kind==="q"){
     const raw=$("#answer").value.trim(); if(!raw) return;
     const quien=$("#quien").value;
     if(quien){ S.intervinieron.add(quien); renderIntegrantes(); }
-    S.T.push({kind:"a",id:++uid,text:quien?`${quien}: ${raw}`:raw}); $("#answer").value="";
+    S.T.push({kind:"a",id:++uid,text:quien?`${quien}: ${raw}`:raw,quien}); $("#answer").value="";
   }
   else if(!S.retry) return;
   run(q.cid,"follow",payload(q.cid,{thread:threadList()}));
@@ -661,7 +705,7 @@ function cargarGrupo(id){
   const g = S.grupos.find(x=>x.id===id); if (!g) return;
   if (S.busy){ setStatus("Espera a que termine el turno en curso para cambiar de grupo.", true); renderGrupos(); return; }
   if (S.T.length) exportSession();       // acta automática del grupo anterior antes de limpiar
-  S.T=[]; S.retry=false; S.crossN=0; stopAudio(); $("#answer").value="";
+  S.T=[]; S.retry=false; S.crossN=0; S.escena=null; stopAudio(); $("#answer").value=""; setNotaFinal("");
   S.grupoId = g.id; S.team = g.nombre; $("#team").value = g.nombre;
   $("#ctx").value = g.propuesta;
   S.sel = new Set(CFG.catalogo.filter(x=>x.t==="O").map(x=>x.c)); g.seleccion.forEach(c=>S.sel.add(c));
@@ -698,12 +742,14 @@ function playBlob(blob, cid){
   // Cualquier salida (fin natural, pausa o error, incl. las muestras de la Sala de voces) debe soltar A.cid y
   // quitar .speaking; si no, el anillo de "hablando" queda pegado en un asiento que ya no habla.
   const cleanup=()=>{ if(A.audio===audio) stopAudio(); URL.revokeObjectURL(audio.src); };
-  audio.addEventListener("ended", ()=>{ if(S.apertura && cid==="ceo") finApertura(); });
+  audio.addEventListener("ended", ()=>{ if(S.escena && cid==="ceo") finEscena(); });
   audio.addEventListener("ended", cleanup);
   audio.addEventListener("pause", cleanup);
   audio.addEventListener("error", cleanup);
   renderSpeaking();
-  audio.play().catch(()=>{ setStatus("El navegador bloqueó el audio: pulsa «Escuchar» para reproducir.", true); stopAudio(); });
+  audio.play().catch(()=>{ stopAudio();
+    if(S.escena && cid==="ceo") escenaSinVoz(`El navegador bloqueó el audio: pulsa de nuevo «${S.escena.tipo==="apertura"?"Apertura":"Cierre"} del CEO».`);
+    else setStatus("El navegador bloqueó el audio: pulsa «Escuchar» para reproducir.", true); });
 }
 async function speak(cid, text, force){
   if((!S.voice && !force) || CFG.tts.engine==="none" || !text) return;
@@ -712,7 +758,8 @@ async function speak(cid, text, force){
     const r=await fetch("/api/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cid,text})});
     if(!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail);
     const blob=await r.blob(); if(gen!==A.gen) return; playBlob(blob,cid);
-  }catch(e){ setStatus("Voz no disponible: "+String(e.message||e).slice(0,140), true); }
+  }catch(e){ const msg="Voz no disponible: "+String(e.message||e).slice(0,140);
+    if(S.escena && cid==="ceo") escenaSinVoz(msg); else setStatus(msg, true); }
 }
 const spokenText = q => q.closed ? (q.reaccion||"") : `${q.reaccion||""} ${q.text}`.trim();
 function buildVoices(){
@@ -750,7 +797,7 @@ const avatar = (id, cls="av") => h("div",{class:cls,"aria-hidden":"true"}, h("im
 function renderSeats(){
   const nav=$("#seats"); nav.replaceChildren(); const lead=CFG.semanas[S.week-1].lead;
   for (const id of CFG.orden){ const p=P(id);
-    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.apertura=false;S.active=id;focoPara(id);renderAll();}},
+    const b=h("button",{class:"seat",type:"button","data-id":id,"aria-pressed":S.active===id?"true":"false",title:id===lead?"Protagonista de esta semana":"",onclick:()=>{S.escena=null;S.active=id;focoPara(id);renderAll();}},
       id===lead?h("span",{class:"lead","aria-hidden":"true"}):null, avatar(id), h("span",{class:"nm",text:p.nombre}), h("span",{class:"rl",text:p.cargo}));
     nav.append(b);
   }
@@ -760,14 +807,15 @@ function speakerBlock(id, extra){ const p=P(id);
   return h("div",{class:"speaker"}, avatar(id), h("div",null, h("div",{class:"who"}, p.nombre, extra||null), h("div",{class:"role",text:p.cargo}))); }
 const LECT={convence:"Convence",parcial:"Convence a medias",no_convence:"No convence"};
 const CIERRE={limite:"Cierre automático: se agotaron los intentos sobre esta preocupación.",repeticion:"Cierre automático: se evitó repetir una repregunta anterior."};
-const lectTag = q => q.lectura ? h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]+(q.estado?` · preocupación ${q.estado}`:"")+(q.guia?" · guía automática":"")}) : null;
+const lectTag = q => q.lectura ? h("span",{class:"lect "+q.lectura,text:LECT[q.lectura]+(q.estado&&!q.junta?` · preocupación ${q.estado}`:"")+(q.guia?" · guía automática":"")}) : null;
 const lenCls = t => { const n=(t||"").length; return n>180?" xlong":n>110?" long":""; };
 function msgCierre(){
   if(!S.junta) return "Punto cerrado. Puedes hacer otra pregunta, una intervención cruzada o pasar la palabra.";
   const sig=juntaSiguiente();
-  return sig ? `Turno cerrado. Siguiente: ${P(sig).corto} (${P(sig).cargo}). Pulsa «Dar la palabra a ${P(sig).corto}».`
-             : (()=>{ const c=calificacion(); return "Junta completa: las 6 preguntas fueron respondidas." +
-                 (c ? ` Nota propuesta: ${num(c.nota.toFixed(1))} / 5 (detalle en el Panel docente).` : "") + " Guarda el acta."; })();
+  // Sin la nota en el escenario: la pantalla se comparte con los estudiantes; la propuesta está en el Panel docente.
+  if(sig) return `Turno cerrado. Siguiente: ${P(sig).corto} (${P(sig).cargo}). Pulsa «Dar la palabra a ${P(sig).corto}».`;
+  return juntaCompleta() ? "Junta completa: las 6 preguntas fueron respondidas y evaluadas. Pulsa «Cierre del CEO» y guarda el acta; la propuesta de nota está en el Panel docente."
+                         : "Turno cerrado.";
 }
 const equipoCorto = () => (S.team||"").split("·")[0].trim();
 function textoApertura(){
@@ -781,13 +829,44 @@ function renderJunta(){
   $("#junta").checked=S.junta;
   if(!S.junta){ info.textContent="Mismas condiciones para todos los grupos: apertura del CEO, TI → Servicio al Cliente → CFO → Negocio → Operaciones y cierre del CEO con la decisión."; return; }
   const n=juntaHecho().size, sig=juntaSiguiente();
-  info.textContent = sig ? `Pregunta ${Math.min(n+1,6)} de 6 · turno de ${P(sig).corto} (${P(sig).cargo}).` : "Junta completa (6 de 6).";
+  info.textContent = (sig ? `Pregunta ${Math.min(n+1,6)} de 6 · turno de ${P(sig).corto} (${P(sig).cargo}).`
+    : juntaCompleta() ? "Junta completa (6 de 6): falta el cierre del CEO y guardar el acta." : "Pregunta 6 de 6 hecha: falta la respuesta del equipo.")
+    + (S.mode==="quick" ? " Sugerencia: el modo Profundo evalúa mejor las respuestas." : "");
 }
-function finApertura(){
-  if(!S.apertura) return; S.apertura=false; setStatus("");
-  const sig = S.junta ? juntaSiguiente() : null;
-  if(sig){ S.active=sig; focoPara(sig); }
+function textoCierre(){
+  const equipo = equipoCorto() || "este equipo";
+  return `Gracias, consultores de ${equipo}. El Comité Directivo escuchó su propuesta y sus respuestas, `+
+    "y deliberará sobre la decisión que nos piden. Recibirán nuestra respuesta formal. Buenas noches.";
+}
+function iniciarEscena(tipo){
+  if(S.busy) return;
+  S.escena={tipo}; renderAll();
+  setStatus(tipo==="apertura" ? "Apertura del CEO…" : "Cierre del CEO…");
+  if(CFG.tts.engine==="none"){ escenaSinVoz(""); return; }
+  speak("ceo", tipo==="apertura" ? textoApertura() : textoCierre(), true);
+}
+/* Sin voz (motor apagado, error de TTS o audio bloqueado): el texto queda en pantalla hasta dar la palabra o elegir
+   otro miembro, pero la junta avanza igual (siguiente turno y precalentamiento) para que nada quede detenido. */
+function escenaSinVoz(msg){
+  if(!S.escena) return;
+  if(S.escena.tipo==="apertura"){ const sig = S.junta ? juntaSiguiente() : null; if(sig){ S.active=sig; focoPara(sig); } precalentarJunta(); }
+  S.escena.sinVoz=true; renderAll(); setStatus(msg, !!msg);
+}
+function finEscena(){
+  if(!S.escena) return; const tipo=S.escena.tipo; S.escena=null; setStatus("");
+  if(tipo==="apertura"){ const sig = S.junta ? juntaSiguiente() : null; if(sig){ S.active=sig; focoPara(sig); } precalentarJunta(); }
   renderAll();
+}
+/* Mientras el equipo expone (15 min), el modelo queda cargado y con el prompt de la primera pregunta en caché:
+   esa pregunta sale sin arranque en frío. Se lanza al terminar la apertura, no durante la voz, para no competir con
+   ella por la CPU. Si falla, no pasa nada: la pregunta funciona igual, solo más lenta. */
+function precalentarJunta(){
+  if(!S.junta || !S.ready[S.mode]) return; const cid=juntaSiguiente(); if(!cid) return;
+  const body={...payload(cid), focus: S.focos[cid] || JUNTA_FOCOS[cid] || ""}, t0=performance.now();
+  fetch("/api/warmup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{ const el=$("#perf"); if(d && d.status==="ok" && el) el.textContent=`Modelo precalentado para la pregunta de ${P(cid).corto} en ${((performance.now()-t0)/1000).toFixed(1)} s (${d.model}).`; })
+    .catch(()=>{});
 }
 function pendienteRespuesta(){ const q=lastQ(), li=lastItem(); return !!q && !q.closed && !!q.text && !!li && li.kind==="q"; }
 function renderCurrent(){
@@ -796,10 +875,10 @@ function renderCurrent(){
     const L=S.live; cid=L.cid; const p=P(cid);
     node=h("div",null, speakerBlock(cid), L.reaccion?h("p",{class:"react",text:L.reaccion}):null,
       h("div",{class:"qwrap"}, L.text?h("p",{class:"qtext"+lenCls(L.text),text:L.text}):h("p",{class:"qtext thinking"}, `${p.corto} ${L.retry?"está reformulando (evita repetirse)":"está formulando"}${L.kind==="open"?" su pregunta":" su reacción"}`, h("span",{class:"dots"}))));
-  } else if(S.apertura){
-    cid="ceo";
-    node=h("div",null, speakerBlock(cid, h("span",{class:"lect parcial",text:"Apertura de la junta"})),
-      h("div",{class:"qwrap"}, h("p",{class:"qtext closed-text",text:textoApertura()})));
+  } else if(S.escena){
+    cid="ceo"; const ap = S.escena.tipo==="apertura";
+    node=h("div",null, speakerBlock(cid, h("span",{class:"lect parcial",text:(ap?"Apertura de la junta":"Cierre de la junta")+(S.escena.sinVoz?" · sin voz":"")})),
+      h("div",{class:"qwrap"}, h("p",{class:"qtext closed-text",text:ap?textoApertura():textoCierre()})));
   } else if(lastQ() && !pendienteRespuesta() && S.active!==lastQ().cid){
     cid=S.active; const p=P(cid), q=lastQ();
     const info = S.junta ? `Pregunta ${Math.min(juntaHecho().size+1,6)} de 6 · turno de ${p.corto}.` : `Tiene la palabra ${p.corto}.`;
@@ -849,12 +928,14 @@ function calificacion(){
 const num = v => String(v).replace(".", ",");
 function renderCalificacion(){
   const box = $("#califica"); if(!box) return;
-  if (S.junta && juntaSiguiente()){
-    box.replaceChildren(h("span",{class:"hint",text:`Se propone al terminar las 6 intervenciones (${juntaHecho().size} de 6 preguntas hechas).`}));
+  const usar = $("#bUsarNota"); if(usar) usar.disabled = true;
+  if (S.junta && !juntaCompleta()){
+    box.replaceChildren(h("span",{class:"hint",text:`Se propone al terminar las 6 intervenciones (${juntaEvaluadas().size} de 6 respuestas evaluadas).`}));
     return;
   }
   const c = calificacion();
   if(!c){ box.replaceChildren(h("span",{class:"hint",text:"Aparece cuando el Comité evalúa la primera respuesta."})); return; }
+  if(usar) usar.disabled = false;
   const filas = c.turnos.map(t=>h("tr",null, h("td",{text:`${P(t.cid).corto}${BLOQUE[t.cid]?" · "+BLOQUE[t.cid]:""}`}),
     h("td",{text:LECT[t.lectura]+(t.ajuste?` (${t.ajuste})`:"")}), h("td",{class:"v",text:num(t.v.toFixed(1))})));
   if (c.part) filas.push(h("tr",null, h("td",{text:"Participación"}), h("td",{text:`No intervino: ${c.faltan.join(", ")}`}), h("td",{class:"v",text:"−0,5"})));
@@ -888,8 +969,14 @@ function syncControls(){
   $("#answer").disabled=S.busy||!(awaiting||!q);
   $("#bStop").hidden=!S.busy; $("#bListen").hidden=!q||CFG.tts.engine==="none";
   $("#bCross").hidden=S.junta; $("#bNext").hidden=S.junta;
-  $("#bApertura").hidden=!S.junta||S.T.length>0||CFG.tts.engine==="none";
-  if(S.junta && !juntaSiguiente()){ $("#bAsk").disabled=true; $("#bAsk").textContent="Junta completa"; }
+  $("#bApertura").hidden=!S.junta||S.T.length>0;
+  $("#bCierreCEO").hidden=!S.junta||!juntaCompleta();
+  $("#bApertura").disabled=$("#bCierreCEO").disabled=S.busy;
+  if(S.junta && juntaCompleta()){ $("#bAsk").disabled=true; $("#bAsk").textContent="Junta completa"; }
+  else if(S.junta && juntaHecho().has(S.active)){
+    if(preguntaCambiable(S.active)){ $("#bAsk").textContent=`Cambiar la pregunta de ${p.corto}`; $("#bAsk").classList.remove("primary"); }
+    else { $("#bAsk").disabled=true; $("#bAsk").textContent=`${p.corto} ya preguntó`; }
+  }
   renderJunta();
 }
 function renderPerf(){
@@ -900,9 +987,24 @@ function renderPerf(){
 function renderAll(){ renderSeats(); renderCurrent(); renderHistory(); renderMeta(); renderCalificacion(); syncControls(); }
 
 /* ───── exportar ───── */
+const celda = t => String(t==null?"":t).replace(/\|/g,"\\|").replace(/\s+/g," ").trim() || "—";
+function filasJunta(){
+  // Una fila por miembro en el orden fijo de la junta: quién respondió y cómo lo leyó el Comité.
+  return JUNTA.map((cid,i)=>{
+    const k = S.T.findIndex(x=>x.kind==="q" && !x.follow && x.cid===cid);
+    const a = k>=0 && S.T[k+1] && S.T[k+1].kind==="a" ? S.T[k+1] : null;
+    const ev = a ? S.T.slice(k+2).find(x=>x.kind==="q" && x.follow && x.cid===cid) || null : null;
+    const quien = a ? (a.quien || S.integrantes.find(n=>a.text.startsWith(n+": ")) || "") : "";
+    const v = ev && ev.lectura in PUNTOS ? PUNTOS[ev.lectura]-(ev.guia?0.5:0) : null;
+    const lectura = k<0 ? "Sin pregunta" : !a ? "Sin respuesta" : !ev ? "Sin evaluar" : (LECT[ev.lectura]||ev.lectura)+(ev.guia?" (guía automática)":"");
+    return {n:i+1, cid, quien, lectura, v};
+  });
+}
 function exportSession(){
   const w=CFG.semanas[S.week-1], b=budgetView();
-  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${equipoCorto()||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`,""];
+  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${equipoCorto()||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`];
+  if(S.junta) out.push("- Modalidad: junta (una pregunta por miembro del Comité, orden fijo, sin repreguntas)");
+  out.push(`- Nota final del docente: ${S.notaFinal!==""&&S.notaFinal!=null ? num(S.notaFinal)+" / 5" : "pendiente"}`, "");
   const ctx=$("#ctx").value.trim(); if(ctx) out.push("## Propuesta del equipo (resumen del docente)",ctx,"");
   if(S.useBudget){ const cat=CFG.catalogo; out.push("## Selección presupuestal",`Total: $${fmt(b.total)}M COP. ${b.estado}`,`Incluidos: ${cat.filter(x=>S.sel.has(x.c)).map(x=>x.c).join(", ")}`,`Excluidos: ${cat.filter(x=>!S.sel.has(x.c)).map(x=>x.c).join(", ")||"ninguno"}`,""); }
   if(S.integrantes.length){
@@ -910,22 +1012,36 @@ function exportSession(){
     out.push("## Integrantes", `Integrantes que intervinieron: ${si.join(", ")||"ninguno"}`,
       `Integrantes que no intervinieron: ${no.join(", ")||"ninguno"}`, "");
   }
+  const completa = !S.junta || juntaCompleta();
+  if(S.junta){
+    out.push("## Resumen de la junta", "| # | Miembro del Comité | Bloque | Respondió | Lectura del Comité | Puntos |", "|---|---|---|---|---|---|");
+    for(const f of filasJunta()){ const p=P(f.cid);
+      out.push(`| ${f.n} | ${celda(`${p.nombre} (${p.cargo})`)} | ${celda(BLOQUE[f.cid])} | ${celda(f.quien)} | ${celda(f.lectura)} | ${f.v==null?"—":num(f.v.toFixed(1))} |`); }
+    if(!completa){ const faltan=filasJunta().filter(f=>f.v==null).map(f=>P(f.cid).corto);
+      out.push("", `**Junta incompleta:** faltan ${faltan.length} de 6 evaluaciones (${faltan.join(", ")}).`); }
+    out.push("");
+  }
   const cal = calificacion();
   if(cal){
-    out.push("## Propuesta de calificación (automática)", `Nota propuesta: ${num(cal.nota.toFixed(1))} / 5 (promedio de ${cal.turnos.length} respuesta(s): ${num(cal.base)}${cal.part?"; −0,5 por participación incompleta":""}).`);
+    out.push(`## Propuesta de calificación (automática${completa?"":"; parcial, junta incompleta"})`, `Nota propuesta: ${num(cal.nota.toFixed(1))} / 5 (promedio de ${cal.turnos.length} respuesta(s): ${num(cal.base)}${cal.part?"; −0,5 por participación incompleta":""}).`);
     cal.turnos.forEach(t=>out.push(`- ${P(t.cid).corto}${BLOQUE[t.cid]?" · "+BLOQUE[t.cid]:""}: ${LECT[t.lectura]}${t.ajuste?` (${t.ajuste})`:""} → ${num(t.v.toFixed(1))}`));
     out.push("Regla: convence 5,0 · a medias 3,5 · no convence 2,0; −0,5 por guía automática; −0,5 si algún integrante no intervino. La nota final la define el docente.","");
   }
   out.push("## Intercambios"); let n=0;
   for(const x of S.T){
-    if(x.kind==="q"){ n++; const p=P(x.cid);
-      out.push("",`### ${n}. ${p.nombre} (${p.cargo})${x.follow?" — repregunta":""}`);
-      if(x.reaccion) out.push(`Reacción: ${x.reaccion}`+(x.lectura?` (${LECT[x.lectura]}${x.estado?`; preocupación ${x.estado}`:""})`:""));
-      if(x.cierre) out.push(CIERRE[x.cierre]);
-      if(x.text) out.push(`Pregunta: ${x.text}`);
+    if(x.kind==="q"){ const p=P(x.cid);
+      if(x.junta){
+        // Junta: la evaluación va en la misma sección que la pregunta del miembro (una sección por miembro).
+        out.push(`Evaluación del Comité: ${x.reaccion||"—"}`+(x.lectura?` (${LECT[x.lectura]}${x.guia?"; guía automática":""})`:""));
+      } else {
+        n++; out.push("",`### ${n}. ${p.nombre} (${p.cargo})${x.follow?" — repregunta":""}`);
+        if(x.reaccion) out.push(`Reacción: ${x.reaccion}`+(x.lectura?` (${LECT[x.lectura]}${x.estado?`; preocupación ${x.estado}`:""})`:""));
+        if(x.cierre) out.push(CIERRE[x.cierre]);
+        if(x.text) out.push(`Pregunta: ${x.text}`);
+      }
       if(x.meta.evalua) out.push(`Evalúa: ${x.meta.evalua}`);
       if(x.meta.vacios?.length) out.push(`Vacíos detectados: ${dedupe(x.meta.vacios).join("; ")}`);
-      if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="") out.push(`Nota del docente: ${x.score}`);
+      if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="" && x.score!=null) out.push(`Nota del docente: ${x.score}`);
     } else out.push(`Respuesta del equipo: ${x.text}`);
   }
   const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${(equipoCorto()||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
