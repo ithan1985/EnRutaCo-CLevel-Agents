@@ -76,3 +76,10 @@ def test_api_junta_pregunta_repetida_de_otro_miembro_se_reintenta():
         ev = read_sse(r)
     assert any(e["type"] == "retry" for e in ev) and "payback" in ev[-1]["data"]["pregunta"]
     assert "CORRECCIÓN OBLIGATORIA" in llm.calls[1]["messages"][-1]["content"]
+
+
+def test_tope_ignora_cifras_debiles():
+    from app.guard import lectura_por_respuesta
+    r = ("John Chávez: haciéndole seguimiento y control permanente de los sistemas verificando las integraciones y "
+         "siguiendo el plan de trabajo y la inversión en los próximos 4 años eso garantizará los acuerdos de servicio")
+    assert lectura_por_respuesta(r, "convence")[0] == "no_convence"

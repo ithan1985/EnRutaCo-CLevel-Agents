@@ -39,6 +39,8 @@ _REGISTRO = {
     "garantizamos": "garantizan", "implementamos": "implementan", "aseguramos": "aseguran", "mantenemos": "mantienen",
     "evitamos": "evitan", "integramos": "integran", "medimos": "miden", "definimos": "definen", "logramos": "logran",
     "manejamos": "manejan", "gestionamos": "gestionan", "controlamos": "controlan", "cumplimos": "cumplen",
+    "seguimos": "siguen", "continuamos": "continúan", "avanzamos": "avanzan", "operamos": "operan",
+    "trabajamos": "trabajan", "hacemos": "hacen", "vemos": "ven",
 }
 _REG_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _REGISTRO), key=len, reverse=True)) + r")\b", re.I)
 
@@ -344,7 +346,8 @@ def lectura_por_respuesta(respuesta: str, lectura: str) -> tuple[str, str]:
     indicador) -> no_convence; sin cifras y con dos -> máximo parcial. Devuelve (lectura, nota para el docente)."""
     txt = re.sub(r"^[^:]{2,40}:\s*", "", (respuesta or "").strip())   # quita el «Nombre:» de quien respondió
     orden = {"no_convence": 0, "parcial": 1, "convence": 2}
-    if _NUM.search(txt):
+    # Solo cuentan cifras fuertes (%, $, decimales o números de 2+ dígitos): «los próximos 4 años» no es un dato.
+    if re.search(r"\d+\s*%|\$\s*\d|\d+[.,]\d+|\d{2,}", txt):
         return lectura, ""
     hits = sum(1 for n, pat, _ in _CHECKLIST if n != "métrica y umbral" and re.search(pat, txt, re.I))
     tope = "no_convence" if hits <= 1 else "parcial" if hits == 2 else "convence"
