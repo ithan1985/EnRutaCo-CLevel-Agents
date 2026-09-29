@@ -91,7 +91,10 @@ def one_question(text: str, keep_chain_terms: Iterable[str] | None = None) -> st
             t = t[: m.start()].rstrip(" ,;") + "?"
     if t.endswith("?") and "¿" not in t:
         t = "¿" + t[0].lower() + t[1:]
-    return t.strip()
+    t = t.strip()
+    if t.startswith("¿") and len(t) > 1:
+        t = "¿" + t[1].upper() + t[2:]   # «¿cómo…» -> «¿Cómo…»
+    return t
 
 
 def strip_questions(text: str) -> str:
