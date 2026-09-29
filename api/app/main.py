@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import sanitize, scaffold
+from .guard import duration_contradiction, sanitize, scaffold
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
                       follow_count, is_confused, last_answer, prior_questions, similar)
@@ -263,6 +263,12 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                         data = force_close(data, "repeticion")
                 if data["seguimiento"] and (follow_count(req) >= MAX_FOLLOWS or concern_attempts(req) >= MAX_ATTEMPTS):
                     data = force_close(data, "limite")
+                dur = duration_contradiction(t.text for t in req.thread if t.kind == "a")
+                ya_senalada = "contradic" in data["reaccion"].lower() or any(
+                    "contradic" in v.lower() for v in data["vacios"])
+                if dur and not ya_senalada:
+                    # El modelo obedece poco el aviso del prompt; se deja constancia igual para el docente.
+                    data["vacios"] = (data["vacios"] + [f"Posible contradicción de plazos: {dur}."])[-3:]
             yield sse({"type": "done", "data": data, "model": model, "stats": out["stats"], "notes": notes})
         except LLMError as e:
             yield sse({"type": "error", "code": e.code, "message": e.message})

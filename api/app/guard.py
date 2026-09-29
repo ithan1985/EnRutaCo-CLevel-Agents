@@ -29,6 +29,7 @@ _REGISTRO = {
     "tienes": "tienen", "puedes": "pueden", "propones": "proponen", "sugieres": "sugieren", "dirías": "dirían",
     "explicas": "explican", "aseguras": "aseguran", "defines": "definen", "planeas": "planean", "piensas": "piensan",
     "garantizarías": "garantizarían", "asegurarías": "asegurarían", "definirías": "definirían", "tú": "ustedes",
+    "migramos": "migran",
 }
 _REG_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _REGISTRO), key=len, reverse=True)) + r")\b", re.I)
 
@@ -144,3 +145,48 @@ def scaffold(prev_question: str, answers: Iterable[str]) -> dict[str, Any]:
     base += f" De eso ya tengo {', '.join(tiene)}; " if tiene else " "
     base += f"empecemos por {nombre}."
     return {"reaccion": base, "seguimiento": pregunta}
+
+
+# ───────────── Contradicciones de plazos ─────────────
+
+# Frases de plazo sin cifra (equivalente aproximado en días) + menciones numéricas ("2 meses", "3 semanas"...).
+_DURATION_WORDS = {
+    "un día": 1.0, "un dia": 1.0, "unos días": 3.0, "unos dias": 3.0,
+    "una semana": 7.0, "un par de semanas": 14.0, "unas semanas": 14.0,
+    "un fin de semana": 2.0, "el fin de semana": 2.0,
+    "un mes": 30.0, "un par de meses": 60.0,
+}
+_DURATION_NUM_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(d[ií]as?|semanas?|meses?)\b", re.I)
+_UNIT_DAYS = {"dia": 1.0, "dias": 1.0, "día": 1.0, "días": 1.0,
+              "semana": 7.0, "semanas": 7.0, "mes": 30.0, "meses": 30.0}
+
+
+def team_durations(answers: Iterable[str]) -> list[tuple[float, str]]:
+    """(días aproximados, fragmento textual) de cada plazo mencionado en las respuestas del equipo."""
+    out: list[tuple[float, str]] = []
+    for a in answers:
+        low = (a or "").lower()
+        for phrase, days in _DURATION_WORDS.items():
+            if phrase in low:
+                out.append((days, phrase))
+        for m in _DURATION_NUM_RE.finditer(a or ""):
+            n = float(m.group(1).replace(",", "."))
+            out.append((n * _UNIT_DAYS[m.group(2).lower()], m.group(0)))
+    return out
+
+
+def duration_contradiction(answers: Iterable[str]) -> str:
+    """Si el equipo dio plazos muy distintos entre sí en el hilo, describe la contradicción; si no, ''.
+
+    Verificación simple (no semántica): compara el plazo más corto contra el más largo mencionados en
+    cualquier respuesta del equipo. Pensada para el caso real de la validación con qwen2.5:3b: el equipo dijo
+    "3 fases de 2 meses" y luego "un fin de semana" para la misma migración, y el modelo no lo cuestionó.
+    """
+    durs = team_durations(answers)
+    if len(durs) < 2:
+        return ""
+    lo = min(durs, key=lambda d: d[0])
+    hi = max(durs, key=lambda d: d[0])
+    if hi[0] >= lo[0] * 4 and hi[0] - lo[0] >= 5:
+        return f'mencionaron «{lo[1]}» y también «{hi[1]}»: los plazos no cuadran'
+    return ""

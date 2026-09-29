@@ -12,7 +12,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Iterable
 
-from .guard import team_figures
+from .guard import duration_contradiction, team_figures
 
 MAX_WORDS_Q = 35
 MAX_FOLLOWS = 6          # tope duro de repreguntas por hilo (salvaguarda; el cierre normal es por preocupación)
@@ -336,6 +336,12 @@ def follow_task(p: dict[str, Any], req: Any) -> str:
         reglas.append(
             "- CIFRAS QUE EL EQUIPO YA DIO EN ESTE HILO (úsalas: no preguntes por un dato que ya está aquí y revisa si "
             "cuadran entre sí o con el caso):\n" + "\n".join(f"  · {c}" for c in cifras)
+        )
+    contradiccion = duration_contradiction(t.text for t in req.thread if t.kind == "a")
+    if contradiccion:
+        reglas.append(
+            f"- POSIBLE CONTRADICCIÓN: {contradiccion}. Tu repregunta debe cuestionar directamente esa "
+            "incoherencia de plazos, no otro tema."
         )
     task = [
         f"TAREA\nEl equipo respondió. Primero, en 'reaccion', reconoce en 1-2 frases como {p['corto']} lo que sí resolvió "

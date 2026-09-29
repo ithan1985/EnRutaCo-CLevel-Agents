@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings, Store
 from app.llm import LLMError
-from app.guard import fix_register, one_question, sanitize, scaffold, team_figures
+from app.guard import duration_contradiction, fix_register, one_question, sanitize, scaffold, team_figures
 from app.main import create_app
 from app.prompts import (MAX_FOLLOWS, budget_info, budget_text, build_messages, build_system, catalog_text,
                          concern_attempts, fmt, is_confused, similar)
@@ -187,6 +187,7 @@ def test_saneo_de_registro_y_pregunta_unica():
         "¿Cuál es el volumen que necesitan migrar para nuestra operación?"
     assert fix_register("Podríamos revisarlo") == "Podrían revisarlo"
     assert fix_register("las baterías y librerías") == "las baterías y librerías"
+    assert fix_register("Migramos 120.000 registros con 2 personas.") == "Migran 120.000 registros con 2 personas."
     assert one_question("¿Quién es dueño del dato maestro? Esta información es crucial.") == "¿Quién es dueño del dato maestro?"
     assert one_question("¿Quién es el dueño y con qué cadencia revisa los umbrales?") == "¿Quién es el dueño?"
     assert one_question("¿Qué costo y qué plazo tiene la fase 1?") == "¿Qué costo y qué plazo tiene la fase 1?"
@@ -208,6 +209,26 @@ def test_cifras_del_equipo_llegan_al_prompt():
     thread = [_q("P1", follow=False), _a("Migramos 120.000 registros con 2 personas y un costo de $180M."), _q("P2"), _a("R")]
     u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
     assert "CIFRAS QUE EL EQUIPO YA DIO" in u and "120.000 registros" in u
+
+
+def test_contradiccion_de_plazos():
+    # Caso real de la validación con qwen2.5:3b: mismo dato (120.000 registros, 2 personas) pero plazos
+    # incompatibles ("3 fases de 2 meses" vs "un fin de semana") que el modelo no cuestionó por su cuenta.
+    dc = duration_contradiction([
+        "Migramos 120.000 registros en 3 fases de 2 meses, con 2 personas y $180M.",
+        "Limpiamos los 120.000 registros en un fin de semana con 2 personas, sin detener la facturación.",
+    ])
+    assert "2 meses" in dc and "fin de semana" in dc
+
+    assert duration_contradiction(["Migramos 120.000 registros en 3 fases de 2 meses."]) == ""  # un solo plazo: nada que comparar
+    assert duration_contradiction(["Lo revisamos cada semana.", "El plan dura 2 meses."]) == ""  # "cada semana" no matchea ningún patrón
+
+    thread = [_q("P1", follow=False),
+              _a("Migramos 120.000 registros en 3 fases de 2 meses, con 2 personas y $180M."),
+              _q("P2"),
+              _a("Limpiamos los 120.000 registros en un fin de semana con 2 personas.")]
+    u = build_messages("follow", STORE, _req(thread))[0][1]["content"]
+    assert "POSIBLE CONTRADICCIÓN" in u and "fin de semana" in u
 
 
 def test_andamiaje_pregunta_por_lo_que_falta():
@@ -356,6 +377,27 @@ def test_follow_tras_tres_intentos_cierre_forzado_aunque_el_modelo_desobedezca()
     with make_client(llm).stream("POST", "/api/follow", json=body(cid="ti", thread=_thread_json(n_loops=3, last="R"))) as r:
         d = read_sse(r)[-1]["data"]
     assert d["seguimiento"] == "" and d["cierre"] == "limite" and len(llm.calls) == 1
+
+
+def test_follow_deja_constancia_de_contradiccion_aunque_el_modelo_la_ignore():
+    # El modelo puede ignorar la contradicción de plazos aunque el prompt la marque explícitamente (3b obedece
+    # poco); el servidor debe dejarla en 'vacios' igual, para el docente.
+    thread = [{"kind": "q", "cid": "ti", "text": "P1"},
+              {"kind": "a", "text": "Migramos 120.000 registros en 3 fases de 2 meses, con 2 personas y $180M."},
+              {"kind": "q", "cid": "ti", "text": "P2", "follow": True},
+              {"kind": "a", "text": "Limpiamos los 120.000 registros en un fin de semana con 2 personas."}]
+    ignora = {"reaccion": "Limpiaron los registros en un fin de semana.", "seguimiento": "¿Quién lo revisó?",
+              "lectura": "parcial", "vacios": []}
+    with make_client(FakeLLM(payload=ignora)).stream("POST", "/api/follow", json=body(cid="ti", thread=thread)) as r:
+        d = read_sse(r)[-1]["data"]
+    assert any("contradic" in v.lower() and "fin de semana" in v.lower() for v in d["vacios"])
+
+    # Si el propio modelo ya la señaló, el servidor no debe duplicarla.
+    ya_señalada = {"reaccion": "Eso contradice el plazo de 2 meses que dieron antes.",
+                   "seguimiento": "¿Cuál de los dos plazos es real?", "lectura": "no_convence", "vacios": []}
+    with make_client(FakeLLM(payload=ya_señalada)).stream("POST", "/api/follow", json=body(cid="ti", thread=thread)) as r:
+        d2 = read_sse(r)[-1]["data"]
+    assert sum("contradic" in v.lower() for v in d2["vacios"]) == 0  # ya está en la reacción, no en vacios
 
 
 def test_follow_sin_respuesta_es_error():
