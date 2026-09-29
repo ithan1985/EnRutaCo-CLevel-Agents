@@ -233,11 +233,6 @@ body.compartir .soloDocente{display:none}
     <h2>Panel docente</h2>
     <button class="btn" id="bShare" type="button" aria-pressed="false">Ocultar notas del docente</button>
     <p class="hint" id="shareInfo" hidden>Pantalla compartida: están ocultos la propuesta, «Dónde presionar», la lectura, la calificación, las observaciones y Avanzado.</p>
-    <div class="soloDocente">
-    <h3>Propuesta del equipo</h3>
-    <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
-    <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
-    </div>
     <h3>Integrantes del equipo</h3>
     <label class="field grupoSel" id="grupoPanelField" hidden>Grupo <select id="grupoPanel"><option value="">Elegir grupo…</option></select></label>
     <label class="field">Nombre del equipo <input id="team" type="text" placeholder="Nombre del equipo" maxlength="60" autocomplete="off"></label>
@@ -250,6 +245,11 @@ body.compartir .soloDocente{display:none}
     <div class="gbtns">
       <button class="btn" id="bTimer15" type="button">Presentación 15 min</button>
       <button class="btn" id="bTimer" type="button">Preguntas 10 min</button>
+    </div>
+    <div class="soloDocente">
+    <h3>Propuesta del equipo</h3>
+    <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
+    <textarea id="ctx" placeholder="Ej.: Fase 1 prioriza O1–O5, H1, H2 y E4. Excluye E1 y E2. Pide $4.520M con ROI basado en retención del retailer."></textarea>
     </div>
     <input type="hidden" id="focus">
     <h3>Selección presupuestal (catálogo §6.2)</h3>
