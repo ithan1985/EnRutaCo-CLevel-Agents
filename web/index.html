@@ -49,7 +49,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 .seat::after{content:"";position:absolute;left:14%;right:14%;bottom:-1px;height:4px;background:transparent;border-radius:2px 2px 0 0}
 .seat[aria-pressed="true"]::after{background:var(--yellow)}
 .seat[aria-pressed="true"] .av{box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--yellow)}
-.seat.speaking .av{box-shadow:0 0 0 3px var(--bg),0 0 0 calc(6px + var(--lvl)*7px) var(--yellow)}
+.seat.speaking .av{box-shadow:0 0 0 3px var(--bg),0 0 0 calc(6px + var(--lvl)*7px) var(--yellow);outline:3px solid var(--yellow);outline-offset:3px;animation:seatSpeak 1s ease-in-out infinite}
+@keyframes seatSpeak{0%,100%{outline-color:var(--yellow)}50%{outline-color:transparent}}
+@media (prefers-reduced-motion:reduce){.seat.speaking .av{animation:none}}
 .seat .lead{position:absolute;top:10px;left:calc(50% + 20px);width:10px;height:10px;border-radius:50%;background:var(--yellow);border:2px solid var(--bg)}
 .seat:hover .nm{text-decoration:underline}
 
@@ -218,17 +220,19 @@ function h(tag, props, ...kids){
 }
 const fmt = n => Number(n).toLocaleString("es-CO");
 const pref = (k,v) => { try{ if(v===undefined) return localStorage.getItem("tgo."+k); localStorage.setItem("tgo."+k,String(v)); }catch(e){ return null; } };
+const dedupe = arr => [...new Set(arr||[])];
 
 let CFG = null;
 const S = {
   week: 8, team: "", mode: "quick", voice: true, panel: false, active: "ceo", focus: "",
-  T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0,
+  T: [], busy: false, ctl: null, live: null, retry: false, crossN: 0, obsFor: null,
   sel: new Set(), useBudget: false, ready: {quick:false, deep:false}, ttsReady: false
 };
 let uid = 0;
 const P = id => CFG.personas[id];
 const lastQ = () => { for (let i=S.T.length-1;i>=0;i--) if (S.T[i].kind==="q") return S.T[i]; return null; };
 const lastItem = () => S.T[S.T.length-1] || null;
+const itemById = id => S.T.find(x=>x.id===id) || null;
 
 /* ───── sesión persistente en el navegador ───── */
 function saveSession(){
@@ -268,8 +272,8 @@ async function boot(){
   $("#focus").addEventListener("input", e=>{ S.focus=e.target.value.trim(); });
   $("#ctx").addEventListener("input", saveSession);
   $("#useBudget").addEventListener("change", e=>{ S.useBudget=e.target.checked; saveSession(); });
-  $("#obs").addEventListener("input", e=>{ const q=lastQ(); if(q){ q.obs=e.target.value; saveSession(); } });
-  $("#score").addEventListener("input", e=>{ const q=lastQ(); if(q){ q.score=e.target.value; saveSession(); } });
+  $("#obs").addEventListener("input", e=>{ const q=itemById(S.obsFor); if(q){ q.obs=e.target.value; saveSession(); } });
+  $("#score").addEventListener("input", e=>{ const q=itemById(S.obsFor); if(q){ q.score=e.target.value; saveSession(); } });
   $("#answer").addEventListener("input", syncControls);
   $("#answer").addEventListener("keydown", e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); submitAnswer(); } });
   $("#bAsk").addEventListener("click", ()=>ask(S.active));
@@ -388,27 +392,35 @@ function setStatus(msg, err){ const s=$("#status"); s.textContent=msg||""; s.cla
 const canRun = () => !S.busy && S.ready[S.mode];
 
 async function run(cid, kind, body){
-  S.busy=true; S.ctl=new AbortController(); S.live={cid,kind,reaccion:"",text:"",spoken:false}; setStatus(""); renderAll();
+  S.busy=true; S.ctl=new AbortController(); S.live={cid,kind,reaccion:"",text:"",spoken:false,spokenText:"",noEarlySpeech:false}; setStatus(""); renderAll();
   const key = kind==="open" ? "pregunta" : "seguimiento";
   try{
     const done = await streamTurn(kind==="open"?"/api/ask":"/api/follow", body, S.ctl.signal, ev=>{
       if(!S.live) return;
-      if(ev.type==="retry"){ stopAudio(); Object.assign(S.live,{raw:"",reaccion:"",text:"",spoken:false,retry:true}); renderCurrent(); return; }
+      if(ev.type==="retry"){ stopAudio(); Object.assign(S.live,{raw:"",reaccion:"",text:"",spoken:false,spokenText:"",retry:true,noEarlySpeech:true}); renderCurrent(); return; }
       S.live.raw=(S.live.raw||"")+ev.t;
       const r=field(S.live.raw,"reaccion"), q=field(S.live.raw,key);
       S.live.reaccion = kind==="follow" ? r.v : ""; S.live.text = q.v;
-      if(!S.live.spoken && q.done && (kind==="open" || r.done)){ S.live.spoken=true; speak(cid, kind==="open"?q.v:`${r.v} ${q.v}`.trim()); }
+      if(!S.live.spoken && !S.live.noEarlySpeech && q.done && (kind==="open" || r.done)){
+        const t = kind==="open" ? q.v : `${r.v} ${q.v}`.trim();
+        S.live.spoken=true; S.live.spokenText=t; speak(cid, t);
+      }
       renderCurrent();
     });
     const data = done.data; S.stats = done.stats || null; renderPerf();
+    let final;
     if(kind==="open"){
       S.T.push({kind:"q",id:++uid,cid,text:data.pregunta,follow:false,meta:{evalua:data.evalua,senales:data.senales,trampa:data.trampa,vacios:[]},obs:"",score:""});
-      if(!S.live.spoken) speak(cid, data.pregunta);
+      final = data.pregunta;
     } else {
       const seg=data.seguimiento||"";
       S.T.push({kind:"q",id:++uid,cid,text:seg,follow:true,closed:!seg,reaccion:data.reaccion,lectura:data.lectura,estado:data.estado||"",cierre:data.cierre||"",guia:data.guia||"",meta:{evalua:"",senales:[],trampa:"",vacios:data.vacios||[]},obs:"",score:""});
-      if(!S.live.spoken) speak(cid, `${data.reaccion} ${seg}`.trim());
+      final = `${data.reaccion} ${seg}`.trim();
     }
+    // La voz debe decir exactamente lo que muestra la pantalla: si lo que se habló en vivo (texto crudo del
+    // modelo) difiere del texto final saneado por el servidor, se corta y se repite con el texto final.
+    if(S.live.spoken){ if(S.live.spokenText!==final){ stopAudio(); speak(cid, final); } }
+    else speak(cid, final);
     S.retry=false;
   }catch(e){
     if(kind==="follow") S.retry=true;
@@ -452,7 +464,12 @@ function playBlob(blob, cid){
     const tick=()=>{ an.getByteTimeDomainData(buf); let s=0; for(const b of buf){ const d=(b-128)/128; s+=d*d; } setLevel(Math.min(1, Math.sqrt(s/buf.length)*4)); A.raf=requestAnimationFrame(tick); };
     audio.addEventListener("play", ()=>{ if(A.ctx.state==="suspended") A.ctx.resume(); tick(); });
   }catch(e){ /* sin analizador: solo se reproduce */ }
-  audio.addEventListener("ended", ()=>{ if(A.audio===audio) stopAudio(); URL.revokeObjectURL(audio.src); });
+  // Cualquier salida (fin natural, pausa o error, incl. las muestras de la Sala de voces) debe soltar A.cid y
+  // quitar .speaking; si no, el anillo de "hablando" queda pegado en un asiento que ya no habla.
+  const cleanup=()=>{ if(A.audio===audio) stopAudio(); URL.revokeObjectURL(audio.src); };
+  audio.addEventListener("ended", cleanup);
+  audio.addEventListener("pause", cleanup);
+  audio.addEventListener("error", cleanup);
   renderSpeaking();
   audio.play().catch(()=>{ setStatus("El navegador bloqueó el audio: pulsa «Escuchar» para reproducir.", true); stopAudio(); });
 }
@@ -550,11 +567,11 @@ function renderMeta(){
   if(q.meta.evalua) parts.push(h("p",null,h("b",{text:"Evalúa: "}),q.meta.evalua));
   if(q.meta.senales?.length) parts.push(h("p",null,h("b",{text:"Buena respuesta:"})),h("ul",null,q.meta.senales.map(s=>h("li",{text:s}))));
   if(q.meta.trampa) parts.push(h("p",null,h("b",{text:"Trampa frecuente: "}),q.meta.trampa));
-  if(q.meta.vacios?.length) parts.push(h("p",null,h("b",{text:"Vacíos de la respuesta anterior:"})),h("ul",null,q.meta.vacios.map(s=>h("li",{text:s}))));
+  if(q.meta.vacios?.length) parts.push(h("p",null,h("b",{text:"Vacíos de la respuesta anterior:"})),h("ul",null,dedupe(q.meta.vacios).map(s=>h("li",{text:s}))));
   if(!parts.length) parts.push(h("p",{class:"hint",text:q.follow?"Sin notas adicionales para esta repregunta.":"Sin notas: el modo Rápido las omite para responder antes (LLM_NOTES_IN_QUICK=1 las activa)."}));
   m.replaceChildren(...parts); syncObs();
 }
-function syncObs(){ const q=lastQ(); $("#obs").value=q?(q.obs||""):""; $("#score").value=q?(q.score||""):""; $("#obs").disabled=$("#score").disabled=!q; }
+function syncObs(){ const q=lastQ(); S.obsFor=q?q.id:null; $("#obs").value=q?(q.obs||""):""; $("#score").value=q?(q.score||""):""; $("#obs").disabled=$("#score").disabled=!q; }
 function syncControls(){
   const q=lastQ(), li=lastItem(), p=P(S.active);
   const awaiting=!!q&&!q.closed&&!!q.text&&li&&li.kind==="q", canRetry=S.retry&&li&&li.kind==="a";
@@ -591,7 +608,7 @@ function exportSession(){
       if(x.cierre) out.push(CIERRE[x.cierre]);
       if(x.text) out.push(`Pregunta: ${x.text}`);
       if(x.meta.evalua) out.push(`Evalúa: ${x.meta.evalua}`);
-      if(x.meta.vacios?.length) out.push(`Vacíos detectados: ${x.meta.vacios.join("; ")}`);
+      if(x.meta.vacios?.length) out.push(`Vacíos detectados: ${dedupe(x.meta.vacios).join("; ")}`);
       if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="") out.push(`Nota del docente: ${x.score}`);
     } else out.push(`Respuesta del equipo: ${x.text}`);
   }
