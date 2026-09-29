@@ -363,3 +363,13 @@ def lectura_por_respuesta(respuesta: str, lectura: str) -> tuple[str, str]:
     if orden[lectura] <= orden[tope]:
         return lectura, ""
     return tope, f"Lectura ajustada a «{tope}»: la respuesta no trae cifras y casi no tiene elementos concretos."
+
+
+def respuesta_vacia(respuesta: str) -> bool:
+    """Respuesta evasiva o sin contenido («no sé, dime tú», «no entiendo»): corta, sin cifras fuertes y sin ningún
+    elemento concreto. Con ella el modelo tiende a inventar lo que el equipo «dijo»."""
+    txt = re.sub(r"^[^:]{2,40}:\s*", "", (respuesta or "").strip())
+    if re.search(r"\d+\s*%|\$\s*\d|\d+[.,]\d+|\d{2,}", txt):
+        return False
+    hits = sum(1 for n, pat, _ in _CHECKLIST if n != "métrica y umbral" and re.search(pat, txt, re.I))
+    return hits == 0 and len(txt.split()) <= 12

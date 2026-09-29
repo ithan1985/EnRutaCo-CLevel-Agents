@@ -27,8 +27,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, sanitize,
-                    scaffold)
+from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, respuesta_vacia,
+                    sanitize, scaffold)
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, correction_open,
                       estado_de,
@@ -312,6 +312,11 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                 # Modo junta: evaluación sin repregunta; la lectura se alinea con la reacción y con la concreción real
                 # de la respuesta (tope determinista).
                 data["seguimiento"] = ""
+                if respuesta_vacia(last_answer(req)):
+                    # Sin contenido que evaluar: reacción determinista (el modelo inventaba lo que el equipo «dijo»).
+                    data["reaccion"] = ("No recibí una respuesta a mi pregunta; esperaba datos concretos de su propuesta. "
+                                        "Queda en el acta como un punto sin respuesta.")
+                    data["vacios"] = (data["vacios"] + ["Respuesta evasiva o vacía: reacción automática del servidor."])[-3:]
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
                 if nota:

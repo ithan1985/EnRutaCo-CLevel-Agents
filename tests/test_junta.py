@@ -83,3 +83,11 @@ def test_tope_ignora_cifras_debiles():
     r = ("John Chávez: haciéndole seguimiento y control permanente de los sistemas verificando las integraciones y "
          "siguiendo el plan de trabajo y la inversión en los próximos 4 años eso garantizará los acuerdos de servicio")
     assert lectura_por_respuesta(r, "convence")[0] == "no_convence"
+
+
+def test_api_junta_respuesta_evasiva_reaccion_determinista():
+    llm = FakeLLM(payload={"reaccion": "John respaldó que garantizarían un SLA continuo con el KMS.", "lectura": "convence", "vacios": []})
+    thread = [{"kind": "q", "cid": "ceo", "text": "¿Qué decisión piden aprobar?"}, {"kind": "a", "text": "John Chávez: no se dime tu"}]
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="ceo", thread=thread, junta=True)) as r:
+        d = read_sse(r)[-1]["data"]
+    assert d["lectura"] == "no_convence" and "No recibí una respuesta" in d["reaccion"] and "KMS" not in d["reaccion"]
