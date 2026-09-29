@@ -398,7 +398,7 @@ def respuesta_vacia(respuesta: str) -> bool:
     return hits == 0 and len(txt.split()) <= 12
 
 
-_EXCESO = re.compile(r"exce(de|den|so|sos|diendo|dieron)\b[^.]*techo|techo[^.]*exce(de|den|so)", re.I)
+_EXCESO = re.compile(r"exce(de|den|der|da|dan|so|sos|diendo|dieron|dería|derían)\b[^.?]*techo|techo[^.?]*exce(de|den|der|so)", re.I)
 
 
 def quitar_exceso_falso(reaccion: str) -> str:

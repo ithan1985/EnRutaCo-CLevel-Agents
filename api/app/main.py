@@ -278,6 +278,8 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             ajuste = kind == "follow" and bool(req.junta) and (
                 respuesta_vacia(last_answer(req)) or is_confused(last_answer(req)) or lectura_por_respuesta(last_answer(req), "convence")[0] != "convence")
 
+            techo_ok = req.budget is not None and budget_info(store.caso, req.budget)["nivel"] == "ok"
+
             async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
                 acc, stats, spoken = "", {}, speak_key is None or ajuste
                 async for piece in client.chat_stream(model, msgs, schema, st.temperature, st.num_predict, stats):
@@ -290,8 +292,9 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                             if raw.strip():
                                 early = sanitize(kind, {speak_key: raw.strip(), "vacios": []}, keep_terms, dados)[speak_key]
                                 # Junta: si la pregunta copia la de otro miembro se va a regenerar; no se anticipa la voz.
-                                copia = kind == "open" and req.junta and any(
+                                copia = kind == "open" and req.junta and (any(
                                     a.text and a.cid != req.cid and similar(early, a.text) for a in req.asked)
+                                    or (techo_ok and bool(_EXCESO.search(early))))
                                 if not copia:
                                     yield sse({"type": "speak", "text": early})
                 if stats:
@@ -317,6 +320,22 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     async for ev in generate(retry):
                         yield ev
                     data = out["data"]
+            if kind == "open" and req.junta and not req.cross_from and req.budget is not None \
+                    and budget_info(store.caso, req.budget)["nivel"] == "ok" and _EXCESO.search(data["pregunta"]):
+                # La pregunta afirma que el equipo excede el techo aunque el total calculado está dentro.
+                log.info("Pregunta de %s afirma un exceso del techo falso; se reintenta.", req.cid)
+                yield sse({"type": "retry", "reason": "exceso_falso"})
+                info = budget_info(store.caso, req.budget)
+                retry = [*messages, {"role": "assistant", "content": out["acc"]},
+                         {"role": "user", "content": (
+                             f"CORRECCIÓN OBLIGATORIA: el total del equipo está DENTRO del techo base ({info.get('estado', '')}). "
+                             "No digas que excede el techo. Genera de nuevo el JSON completo con otra pregunta desde tu rol"
+                             + (f" y este foco: {req.focus}." if req.focus else "."))}]
+                async for ev in generate(retry):
+                    yield ev
+                data = out["data"]
+            if kind == "open" and "pone a prueba, en una frase" in (data.get("evalua") or ""):
+                data["evalua"] = req.focus or ""   # el modelo copió la instrucción del formato
             if kind == "follow" and req.junta:
                 # Modo junta: evaluación sin repregunta; la lectura se alinea con la reacción y con la concreción real
                 # de la respuesta (tope determinista).

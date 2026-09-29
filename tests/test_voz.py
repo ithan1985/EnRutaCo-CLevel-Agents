@@ -62,3 +62,18 @@ def test_junta_respuesta_confusa_no_convence_y_no_inventa_cifras():
     assert not [e for e in ev if e["type"] == "speak"]
     d = ev[-1]["data"]
     assert d["lectura"] == "no_convence" and "1.670" not in d["reaccion"] and "no hay repreguntas" in d["reaccion"]
+
+
+def test_junta_pregunta_con_exceso_de_techo_falso_se_reintenta():
+    malo = {"pregunta": "¿Cómo justifican el ROI para exceder el techo de $4.200M?",
+            "evalua": "qué criterio del curso pone a prueba, en una frase", "senales": [], "trampa": ""}
+    bueno = {"pregunta": "¿De dónde salen los beneficios del ROI al cierre del programa?",
+             "evalua": "qué criterio del curso pone a prueba, en una frase", "senales": [], "trampa": ""}
+    ev = _eventos(FakeLLM(payload=[malo, bueno]), "/api/ask", cid="cfo", junta=True, budget=["E2"],
+                  focus="caso financiero")
+    tipos = [e["type"] for e in ev]
+    assert "retry" in tipos
+    d = ev[-1]["data"]
+    assert "exceder" not in d["pregunta"] and d["evalua"] == "caso financiero"
+    speak = [e for e in ev if e["type"] == "speak"]
+    assert all("exceder" not in e["text"] for e in speak)
