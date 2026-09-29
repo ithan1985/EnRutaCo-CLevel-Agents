@@ -508,7 +508,7 @@ const threadList = () => S.T.slice(threadStart()).map(x=> x.kind==="q" ? {kind:"
 const askedList = () => S.T.filter(x=>x.kind==="q"&&x.text).slice(-10).map(x=>({cid:x.cid,text:x.text}));
 function payload(cid, o={}){
   return {cid, week:S.week, mode:S.mode, team:S.team, context:$("#ctx").value.trim(), focus:S.focus,
-    budget:S.useBudget?[...S.sel]:null, asked:askedList(), thread:o.thread||[], cross_from:o.cross_from||null};
+    budget:S.useBudget?[...S.sel]:null, asked:askedList(), thread:o.thread||[], cross_from:o.cross_from||null, junta:!!S.junta};
 }
 function field(text,key){
   const i=text.indexOf('"'+key+'"'); if(i<0) return {v:"",done:false};
@@ -766,7 +766,8 @@ function msgCierre(){
   if(!S.junta) return "Punto cerrado. Puedes hacer otra pregunta, una intervención cruzada o pasar la palabra.";
   const sig=juntaSiguiente();
   return sig ? `Turno cerrado. Siguiente: ${P(sig).corto} (${P(sig).cargo}). Pulsa «Dar la palabra a ${P(sig).corto}».`
-             : "Junta completa: las 6 preguntas fueron respondidas. Guarda el acta.";
+             : (()=>{ const c=calificacion(); return "Junta completa: las 6 preguntas fueron respondidas." +
+                 (c ? ` Nota propuesta: ${num(c.nota.toFixed(1))} / 5 (detalle en el Panel docente).` : "") + " Guarda el acta."; })();
 }
 const equipoCorto = () => (S.team||"").split("·")[0].trim();
 function textoApertura(){
@@ -848,6 +849,10 @@ function calificacion(){
 const num = v => String(v).replace(".", ",");
 function renderCalificacion(){
   const box = $("#califica"); if(!box) return;
+  if (S.junta && juntaSiguiente()){
+    box.replaceChildren(h("span",{class:"hint",text:`Se propone al terminar las 6 intervenciones (${juntaHecho().size} de 6 preguntas hechas).`}));
+    return;
+  }
   const c = calificacion();
   if(!c){ box.replaceChildren(h("span",{class:"hint",text:"Aparece cuando el Comité evalúa la primera respuesta."})); return; }
   const filas = c.turnos.map(t=>h("tr",null, h("td",{text:`${P(t.cid).corto}${BLOQUE[t.cid]?" · "+BLOQUE[t.cid]:""}`}),

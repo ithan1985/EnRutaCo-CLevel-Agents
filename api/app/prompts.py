@@ -313,6 +313,21 @@ FORMAT_OPEN_LITE = (
     "FORMATO DE SALIDA\nResponde SOLO con un objeto JSON válido, sin texto adicional ni bloques de código:\n"
     '{"pregunta":"tu pregunta, en primera persona"}'
 )
+SCHEMA_JUNTA = {
+    "type": "object",
+    "properties": {
+        "reaccion": {"type": "string"},
+        "lectura": {"type": "string", "enum": ["convence", "parcial", "no_convence"]},
+        "vacios": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["reaccion", "lectura", "vacios"],
+}
+FORMAT_JUNTA = (
+    "FORMATO DE SALIDA\nResponde SOLO con un objeto JSON válido, sin texto adicional ni bloques de código, con estas claves en este orden:\n"
+    '{"reaccion":"1 o 2 frases en personaje, sin preguntas","lectura":"convence | parcial | no_convence",'
+    '"vacios":["qué faltó o estuvo débil en la respuesta, para el docente (vacío si nada)"]}'
+)
+
 FORMAT_FOLLOW = (
     "FORMATO DE SALIDA\nResponde SOLO con un objeto JSON válido, sin texto adicional ni bloques de código, con estas claves en este orden:\n"
     '{"reaccion":"1 o 2 frases en personaje: SOLO el reconocimiento o la objeción, nunca la pregunta en sí",'
@@ -323,6 +338,26 @@ FORMAT_FOLLOW = (
 
 
 # ───────────── Tarea de repregunta ─────────────
+
+def junta_task(p: dict[str, Any], req: Any) -> str:
+    """Modo junta: una sola pregunta por miembro. El miembro evalúa la respuesta y cede la palabra (sin repregunta)."""
+    cifras = team_figures(t.text for t in req.thread if t.kind == "a")
+    partes = [
+        "TAREA (JUNTA: una sola pregunta por miembro del Comité, sin repreguntas)",
+        f"El equipo respondió tu pregunta. En 'reaccion', como {p['corto']} y en 1 o 2 frases, di qué quedó resuelto y qué "
+        "no, citando un dato concreto de su respuesta. Trata a los consultores de «ustedes» y habla como evaluador: no te "
+        "incluyas en su plan («garantizaré», «haremos»). No hagas preguntas.",
+        "Califica en 'lectura' SOLO por el contenido de la respuesta frente a tu pregunta, no por tu tono ni por tu rol:",
+        "- convence: responde directamente lo que preguntaste con datos concretos (cifras, responsables, plazos, "
+        "herramientas o criterios) coherentes con el caso.",
+        "- parcial: responde en parte, o responde sin los datos que harían creíble la respuesta.",
+        "- no_convence: no responde lo que preguntaste, es genérica o contradice cifras dadas antes.",
+        "La reacción debe ser coherente con la lectura: si convence, dilo; si no, di qué faltó.",
+    ]
+    if cifras:
+        partes.append("Cifras que dio el equipo (verifica su coherencia): " + " · ".join(cifras))
+    return "\n".join(partes)
+
 
 def follow_task(p: dict[str, Any], req: Any) -> str:
     n, intentos, ans = follow_count(req), concern_attempts(req), last_answer(req)
@@ -448,6 +483,10 @@ def build_messages(kind: str, store: Any, req: Any, notes: bool = True) -> tuple
             common.append("HILO ACTUAL\n" + thread_text(req, personas))
         parts = [*common, task, FORMAT_OPEN if notes else FORMAT_OPEN_LITE]
         schema = SCHEMA_OPEN if notes else SCHEMA_OPEN_LITE
+    elif getattr(req, "junta", False):
+        task = junta_task(p, req)
+        parts = [*common, "HILO ACTUAL CON ESTE EQUIPO\n" + thread_text(req, personas), task, FORMAT_JUNTA]
+        schema = SCHEMA_JUNTA
     else:
         task = follow_task(p, req)
         parts = [*common, "HILO ACTUAL CON ESTE EQUIPO\n" + thread_text(req, personas), task, FORMAT_FOLLOW]

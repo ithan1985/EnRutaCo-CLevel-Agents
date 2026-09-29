@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import datos_ya_dados, duration_contradiction, sanitize, scaffold
+from .guard import coherencia_lectura, datos_ya_dados, duration_contradiction, sanitize, scaffold
 from .llm import LLMError, OllamaClient
 from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, estado_de,
                       follow_count, is_confused, last_answer, prior_questions, similar, thread_terms)
@@ -61,6 +61,7 @@ class TurnReq(BaseModel):
     asked: list[Asked] = []
     thread: list[Turn] = []
     cross_from: Optional[str] = None
+    junta: bool = False
 
 
 class TTSReq(BaseModel):
@@ -257,7 +258,12 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             async for ev in generate(messages):
                 yield ev
             data = out["data"]
-            if kind == "follow":
+            if kind == "follow" and req.junta:
+                # Modo junta: evaluación sin repregunta; la lectura se alinea con la reacción.
+                data["seguimiento"] = ""
+                data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
+                data["estado"] = estado_de(data["lectura"])
+            elif kind == "follow":
                 prev = repeated(data, req)
                 if prev and is_confused(last_answer(req)):
                     # El equipo no entiende y el modelo solo repite: andamiaje con plantilla, sin gastar otra llamada.

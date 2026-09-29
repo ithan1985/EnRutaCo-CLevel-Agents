@@ -29,7 +29,7 @@ _REGISTRO = {
     "garantizas": "garantizan", "presentarías": "presentarían", "harías": "harían", "podrías": "podrían",
     "tienes": "tienen", "puedes": "pueden", "propones": "proponen", "sugieres": "sugieren", "dirías": "dirían",
     "explicas": "explican", "aseguras": "aseguran", "defines": "definen", "planeas": "planean", "piensas": "piensan",
-    "garantizarías": "garantizarían", "asegurarías": "asegurarían", "definirías": "definirían", "tú": "ustedes",
+    "garantizarías": "garantizarían", "garantizaré": "garantizarán", "aseguraré": "asegurarán", "implementaré": "implementarán", "migraré": "migrarán", "mediré": "medirán", "garantizaría": "garantizarían", "asegurarías": "asegurarían", "definirías": "definirían", "tú": "ustedes",
     "migramos": "migran",
 }
 _REG_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _REGISTRO), key=len, reverse=True)) + r")\b", re.I)
@@ -305,3 +305,24 @@ def is_vague(answer: str) -> bool:
     sin_cifras = not _NUM.search(a)
     sin_concrecion = not any(re.search(pat, a, re.I) for nombre, pat, _ in _CHECKLIST if nombre != "métrica y umbral")
     return sin_cifras and sin_concrecion
+
+
+# ───────────── Coherencia reacción / lectura (modo junta) ─────────────
+
+_NEGATIVO = re.compile(r"\b(no (responde|responden|explica|explican|detalla|detallan|precisa|precisan|especifica|especifican|"
+                       r"mencion|queda|convence|resuelve|aclara|dijeron)|falta|faltan|faltó|sin (datos|cifras|dueño|responsable|"
+                       r"plazo|evidencia)|insuficiente|genéric|vag[oa]|contradic|no cuadra|pendiente|preocupa|dud)", re.I)
+_POSITIVO = re.compile(r"\b(convence|resuelve|resuelto|resuelta|claro|clara|concret|me ayuda|ayuda a entender|responde|"
+                       r"bien planteado|sólid|coherente|satisfac|queda cubierto|cubre)", re.I)
+
+
+def coherencia_lectura(reaccion: str, lectura: str) -> str:
+    """Evita lecturas que contradicen la reacción (p. ej. reacción positiva calificada como no_convence)."""
+    txt = reaccion or ""
+    sin_negadas = re.sub(r"\bno\s+\w+(\s+\w+)?", " ", txt, flags=re.I)   # «no responden», «no queda claro»
+    neg, pos = bool(_NEGATIVO.search(txt)), bool(_POSITIVO.search(sin_negadas))
+    if lectura == "no_convence" and pos and not neg:
+        return "parcial"
+    if lectura == "convence" and neg and not pos:
+        return "parcial"
+    return lectura
