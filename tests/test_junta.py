@@ -91,3 +91,11 @@ def test_api_junta_respuesta_evasiva_reaccion_determinista():
     with make_client(llm).stream("POST", "/api/follow", json=body(cid="ceo", thread=thread, junta=True)) as r:
         d = read_sse(r)[-1]["data"]
     assert d["lectura"] == "no_convence" and "No recibí una respuesta" in d["reaccion"] and "KMS" not in d["reaccion"]
+
+
+def test_api_junta_quita_exceso_de_techo_falso():
+    llm = FakeLLM(payload={"reaccion": "El ROI al año 3 es −7,8 %. Falta justificar el exceso del techo base.", "lectura": "parcial", "vacios": []})
+    thread = [{"kind": "q", "cid": "cfo", "text": "¿Cuál es el ROI?"}, {"kind": "a", "text": "Ana: ROI −7,8 % al año 3 y payback en el año 4 con 3 % de ahorro."}]
+    with make_client(llm).stream("POST", "/api/follow", json=body(cid="cfo", thread=thread, junta=True, budget=["E2"])) as r:
+        d = read_sse(r)[-1]["data"]
+    assert "exceso" not in d["reaccion"] and "−7,8 %" in d["reaccion"]

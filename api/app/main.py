@@ -27,10 +27,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, Store
-from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, respuesta_vacia,
-                    sanitize, scaffold)
+from .guard import (coherencia_lectura, datos_ya_dados, duration_contradiction, lectura_por_respuesta, quitar_exceso_falso,
+                    respuesta_vacia, sanitize, scaffold)
 from .llm import LLMError, OllamaClient
-from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, build_messages, concern_attempts, correction_message, correction_open,
+from .prompts import (MAX_ATTEMPTS, MAX_FOLLOWS, budget_info, build_messages, concern_attempts, correction_message, correction_open,
                       estado_de,
                       follow_count, is_confused, last_answer, prior_questions, similar, thread_terms)
 from .tts import build_engine
@@ -321,6 +321,12 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     data["reaccion"] = ("No recibí una respuesta a mi pregunta; esperaba datos concretos de su propuesta. "
                                         "Queda en el acta como un punto sin respuesta.")
                     data["vacios"] = (data["vacios"] + ["Respuesta evasiva o vacía: reacción automática del servidor."])[-3:]
+                if req.budget is not None and budget_info(store.caso, req.budget)["nivel"] == "ok":
+                    # El modelo a veces afirma que el equipo «excede el techo» aunque el total calculado está dentro.
+                    limpia = quitar_exceso_falso(data["reaccion"])
+                    if limpia != data["reaccion"]:
+                        data["reaccion"] = limpia
+                        data["vacios"] = (data["vacios"] + ["Se quitó de la reacción una afirmación falsa de exceso del techo."])[-3:]
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
                 if nota:

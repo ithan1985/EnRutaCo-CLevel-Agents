@@ -373,3 +373,18 @@ def respuesta_vacia(respuesta: str) -> bool:
         return False
     hits = sum(1 for n, pat, _ in _CHECKLIST if n != "métrica y umbral" and re.search(pat, txt, re.I))
     return hits == 0 and len(txt.split()) <= 12
+
+
+_EXCESO = re.compile(r"exce(de|den|so|sos|diendo|dieron)\b[^.]*techo|techo[^.]*exce(de|den|so)", re.I)
+
+
+def quitar_exceso_falso(reaccion: str) -> str:
+    """Quita frases que afirman que el equipo excede el techo cuando el servidor calculó que está dentro."""
+    frases = re.split(r"(?<=[.!?])\s+", (reaccion or "").strip())
+    out = [f for f in frases if not _EXCESO.search(f)]
+    if len(out) == len(frases):
+        return reaccion
+    if not out:
+        return reaccion
+    # Si la frase eliminada estaba unida con «y la necesidad de…», queda la parte previa limpia.
+    return " ".join(out).strip()
