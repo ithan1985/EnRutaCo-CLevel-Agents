@@ -36,6 +36,21 @@ button,input,select,textarea{font:inherit;color:inherit}
 .seatsRow .seats{flex:1;min-width:0;border-bottom:0}
 .timer{font-weight:700;font-size:clamp(2.6rem,5.2vw,4.8rem);line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);padding:0 clamp(16px,3vw,40px);white-space:nowrap}
 .timer[hidden]{display:none}
+.panel .timer{display:block;text-align:center;padding:6px 0 12px;margin-bottom:10px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;background:var(--surface)}
+.panel .timer[hidden]{display:none}
+/* Comité en columna a la izquierda (pantallas anchas); en móvil se mantiene la fila superior */
+@media (min-width:900px){
+  .cuerpo{display:grid;grid-template-columns:240px minmax(0,1fr);align-items:start}
+  .seatsRow{flex-direction:column;align-items:stretch;border-bottom:0;border-right:1px solid var(--line);position:sticky;top:0;max-height:100vh;overflow-y:auto}
+  .seatsRow .seats{flex-direction:column;padding:10px 8px 16px;overflow:visible}
+  .seatsRow .seat{flex:none;max-width:none;display:grid;grid-template-columns:56px minmax(0,1fr);grid-template-rows:auto auto;column-gap:12px;align-items:center;text-align:left;padding:10px 10px 10px 14px}
+  .seatsRow .seat .av{grid-row:1 / span 2;width:52px;height:52px}
+  .seatsRow .seat .nm{align-self:end}
+  .seatsRow .seat .rl{align-self:start;min-height:0}
+  .seatsRow .seat::after{left:0;right:auto;top:18%;bottom:18%;width:4px;height:auto;border-radius:0 2px 2px 0}
+  .seatsRow .seat .lead{top:8px;left:52px}
+  .layout{margin:0}
+}
 .timer.warn{color:var(--warn)}.timer.bad{color:var(--bad)}
 
 .banner{margin:14px clamp(16px,3vw,40px) 0;padding:10px 14px;border-left:4px solid var(--yellow);background:var(--surface);font-size:.9rem}
@@ -177,9 +192,9 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
 </header>
 
 <div class="banner" id="banner" hidden></div>
+<div class="cuerpo">
 <div class="seatsRow">
   <nav class="seats" id="seats" aria-label="Miembros del Comité"></nav>
-  <span class="timer" id="timerTop" hidden aria-live="polite"></span>
 </div>
 
 <div class="layout" id="layout">
@@ -210,6 +225,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
   </main>
 
   <aside class="panel" id="panel" hidden aria-label="Panel docente">
+    <span class="timer" id="timerTop" hidden aria-live="polite"></span>
     <h2>Panel docente</h2>
     <h3>Propuesta del equipo</h3>
     <p class="hint">Resume decisiones, exclusiones y KPIs del equipo. Los agentes lo usan para afinar las preguntas.</p>
@@ -264,6 +280,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <button class="btn" id="bExport" type="button">Guardar sesión (.md)</button>
     <button class="btn" id="bClear" type="button">Reiniciar sesión</button>
   </aside>
+</div>
 </div>
 
 <script>
