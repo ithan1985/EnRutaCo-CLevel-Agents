@@ -667,8 +667,11 @@ function ask(cid){
 function submitAnswer(){
   if(!canRun()) return; const q=lastQ(); if(!q||q.closed) return; const li=lastItem();
   if(li.kind==="q"){
-    const raw=$("#answer").value.trim(); if(!raw) return;
+    let raw=$("#answer").value.trim(); if(!raw) return;
     const quien=$("#quien").value;
+    // Si el texto ya empieza con «Nombre:» de un integrante (pegado de notas), no se duplica el nombre en el acta.
+    for(let i=0;i<3;i++){ const n=S.integrantes.find(x=>raw.toLowerCase().startsWith(x.toLowerCase()+":")); if(!n) break; raw=raw.slice(n.length+1).trim(); }
+    if(!raw) return;
     if(quien){ S.intervinieron.add(quien); renderIntegrantes(); }
     S.T.push({kind:"a",id:++uid,ts:Date.now(),text:quien?`${quien}: ${raw}`:raw,quien}); pararDictado(); $("#answer").value="";
     saveSession();   // si la página se recarga durante la evaluación, la respuesta no se pierde

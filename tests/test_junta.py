@@ -135,3 +135,11 @@ def test_reaccion_coherente_quita_cifras_inventadas():
     r = reaccion_coherente("Garantizan que, en un plazo de 6 meses, reducen el tiempo de decisión en más del 50%. "
                            "Sin embargo, no definen responsables.", "no_convence")
     assert "50%" not in r and r.startswith("Sin embargo")
+
+
+def test_coherencia_convence_con_reserva_baja_a_parcial():
+    from app.guard import coherencia_lectura
+    r = ("El piloto con 20 mensajeros se implementará en el año 1. Si la cobertura baja, no ampliarán, "
+         "pero no me aseguraron cómo se mide el cumplimiento de la meta.")
+    assert coherencia_lectura(r, "convence") == "parcial"
+    assert coherencia_lectura("Ustedes proponen tres indicadores con corte diario y dueño por KPI.", "convence") == "convence"

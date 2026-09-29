@@ -330,7 +330,9 @@ def is_vague(answer: str) -> bool:
 
 _NEGATIVO = re.compile(r"\b(no (responde|responden|explica|explican|detalla|detallan|precisa|precisan|especifica|especifican|"
                        r"mencion|queda|convence|resuelve|aclara|dijeron)|falta|faltan|faltó|sin (datos|cifras|dueño|responsable|"
-                       r"plazo|evidencia)|insuficiente|genéric|vag[oa]|contradic|no cuadra|pendiente|preocupa|dud)", re.I)
+                       r"plazo|evidencia)|insuficiente|genéric|vag[oa]|contradic|no cuadra|pendiente|preocupa|dud|sin embargo|"
+                       r"no (me |nos |les )?(asegur|garantiz|demostr|mostr|indic|dij|aclar|explic|especific|precis|detall|"
+                       r"respond|resolv|convenc)\w*)", re.I)
 _POSITIVO = re.compile(r"\b(convence|resuelve|resuelto|resuelta|claro|clara|concret|me ayuda|ayuda a entender|responde|"
                        r"bien planteado|sólid|coherente|satisfac|queda cubierto|cubre)", re.I)
 
