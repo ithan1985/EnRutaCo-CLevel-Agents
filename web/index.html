@@ -768,8 +768,9 @@ function msgCierre(){
   return sig ? `Turno cerrado. Siguiente: ${P(sig).corto} (${P(sig).cargo}). Pulsa «Dar la palabra a ${P(sig).corto}».`
              : "Junta completa: las 6 preguntas fueron respondidas. Guarda el acta.";
 }
+const equipoCorto = () => (S.team||"").split("·")[0].trim();
 function textoApertura(){
-  const equipo = (S.team||"").split("·")[0].trim() || "este equipo";
+  const equipo = equipoCorto() || "este equipo";
   return `Buenas noches, consultores de ${equipo}. Soy Carlos Restrepo y presido este Comité Directivo. `+
     "Tienen quince minutos para sustentar su Business Transformation Roadmap. Al terminar, cada director les hará una pregunta "+
     "y yo cerraré con la decisión que nos piden aprobar. Adelante.";
@@ -826,7 +827,7 @@ function renderHistory(){
   if(!pairs.length) return; box.append(h("h2",{text:"Sesión"}));
   for(const pr of pairs.slice().reverse()){ const p=P(pr.q.cid);
     box.append(h("div",{class:"pair"}, pr.q.reaccion?h("div",{class:"hr",text:`${p.corto}: ${pr.q.reaccion}`+(pr.q.estado?` [${pr.q.estado}${pr.q.cierre?", cierre automático":""}]`:"")}):null,
-      pr.q.text?h("div",{class:"hq"},h("b",{text:p.corto+": "}),pr.q.text):null, pr.a?h("div",{class:"ha",text:(S.team||"Equipo")+": "+pr.a.text}):null));
+      pr.q.text?h("div",{class:"hq"},h("b",{text:p.corto+": "}),pr.q.text):null, pr.a?h("div",{class:"ha",text:(equipoCorto()||"Equipo")+": "+pr.a.text}):null));
   }
 }
 const BLOQUE = {ti:"Propuesta To-Be y roadmap", cs:"Problema (cliente)", cfo:"Caso financiero", dn:"Modelo de negocio", ops:"Quick wins / operación", ceo:"Decisión"};
@@ -896,7 +897,7 @@ function renderAll(){ renderSeats(); renderCurrent(); renderHistory(); renderMet
 /* ───── exportar ───── */
 function exportSession(){
   const w=CFG.semanas[S.week-1], b=budgetView();
-  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${S.team||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`,""];
+  const out=["# Sesión Comité Directivo EnRutaCo",`- Fecha: ${new Date().toLocaleDateString("es-CO")}`,`- Equipo: ${equipoCorto()||"sin nombre"}`,`- Semana del caso: ${w.n}, ${w.titulo}`,`- Modelo: ${S.mode==="deep"?CFG.llm.deep:CFG.llm.quick}`,""];
   const ctx=$("#ctx").value.trim(); if(ctx) out.push("## Propuesta del equipo (resumen del docente)",ctx,"");
   if(S.useBudget){ const cat=CFG.catalogo; out.push("## Selección presupuestal",`Total: $${fmt(b.total)}M COP. ${b.estado}`,`Incluidos: ${cat.filter(x=>S.sel.has(x.c)).map(x=>x.c).join(", ")}`,`Excluidos: ${cat.filter(x=>!S.sel.has(x.c)).map(x=>x.c).join(", ")||"ninguno"}`,""); }
   if(S.integrantes.length){
@@ -922,7 +923,7 @@ function exportSession(){
       if(x.obs) out.push(`Observación del docente: ${x.obs}`); if(x.score!=="") out.push(`Nota del docente: ${x.score}`);
     } else out.push(`Respuesta del equipo: ${x.text}`);
   }
-  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${(S.team||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
+  const a=h("a",{href:URL.createObjectURL(new Blob([out.join("\n")+"\n"],{type:"text/markdown"})),download:`acta-${(equipoCorto()||"sesion").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"sesion"}.md`});
   document.body.append(a); a.click(); a.remove(); setStatus("Sesión guardada.");
 }
 
