@@ -224,9 +224,11 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <label class="chkline"><input type="checkbox" id="junta"> 1 pregunta por miembro, orden fijo y sin repreguntas</label>
     <p class="hint" id="juntaInfo">Mismas condiciones para todos los grupos: apertura del CEO, TI → Servicio al Cliente → CFO → Negocio → Operaciones y cierre del CEO con la decisión.</p>
     <h3>Temporizador de preguntas</h3>
-    <button class="btn" id="bTimer" type="button">Iniciar 10 min</button>
-    <h3>Foco de la próxima pregunta</h3>
-    <input type="text" id="focus" placeholder="Ej.: exclusiones, supuestos del ROI, riesgo de migración" maxlength="120">
+    <div class="gbtns">
+      <button class="btn" id="bTimer15" type="button">Presentación 15 min</button>
+      <button class="btn" id="bTimer" type="button">Preguntas 10 min</button>
+    </div>
+    <input type="hidden" id="focus">
     <h3>Selección presupuestal (catálogo §6.2)</h3>
     <p class="hint">Los obligatorios están fijos. El total lo calcula el servidor.</p>
     <div class="chips" id="chips"></div>
@@ -352,7 +354,8 @@ async function boot(){
     S.integrantes = [...new Set(e.target.value.split(",").map(s=>s.trim()).filter(Boolean))];
     renderIntegrantes(); saveSession();
   });
-  $("#bTimer").addEventListener("click", ()=>{ S.timer.running ? stopTimer() : startTimer(); });
+  $("#bTimer").addEventListener("click", ()=>{ S.timer.running ? stopTimer() : startTimer(600); });
+  $("#bTimer15").addEventListener("click", ()=>{ S.timer.running ? stopTimer() : startTimer(900); });
   $("#focus").addEventListener("input", e=>{ S.focus=e.target.value.trim(); });
   $("#ctx").addEventListener("input", saveSession);
   $("#useBudget").addEventListener("change", e=>{ S.useBudget=e.target.checked; saveSession(); });
@@ -419,11 +422,12 @@ function renderTimerUI(){
   el.textContent = fmtTime(secs);
   el.classList.toggle("warn", running && secs>0 && secs<=120);
   el.classList.toggle("bad", secs<=0);
-  $("#bTimer").textContent = running ? "Detener temporizador" : "Iniciar 10 min";
+  $("#bTimer").textContent = running ? "Detener temporizador" : "Preguntas 10 min";
+  $("#bTimer15").hidden = running;
 }
-function startTimer(){
+function startTimer(total=600){
   if (S.timer.id) clearInterval(S.timer.id);
-  S.timer.secs = 600; S.timer.running = true; S.timer.shown = true;
+  S.timer.secs = total; S.timer.running = true; S.timer.shown = true;
   S.timer.id = setInterval(()=>{
     S.timer.secs--;
     if (S.timer.secs<=0){ S.timer.secs=0; S.timer.running=false; clearInterval(S.timer.id); S.timer.id=null; }
