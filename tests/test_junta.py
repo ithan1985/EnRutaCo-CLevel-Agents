@@ -128,3 +128,10 @@ def test_reaccion_coherente_quita_elogio_cuando_el_tope_baja_la_lectura():
     assert "Convenció" not in r and r.endswith("así no me convence.")
     r2 = reaccion_coherente("Ustedes proponen APIs para aliados. Sin embargo, no dan plazos.", "parcial")
     assert r2.startswith("Ustedes proponen APIs") and "Sin embargo" in r2 and r2.endswith("solo a medias.")
+
+
+def test_reaccion_coherente_quita_cifras_inventadas():
+    from app.guard import reaccion_coherente
+    r = reaccion_coherente("Garantizan que, en un plazo de 6 meses, reducen el tiempo de decisión en más del 50%. "
+                           "Sin embargo, no definen responsables.", "no_convence")
+    assert "50%" not in r and r.startswith("Sin embargo")

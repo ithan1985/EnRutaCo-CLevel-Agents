@@ -365,6 +365,7 @@ def lectura_por_respuesta(respuesta: str, lectura: str) -> tuple[str, str]:
     return tope, f"Lectura ajustada a «{tope}»: la respuesta no trae cifras y casi no tiene elementos concretos."
 
 
+_CIFRA = re.compile(r"\d+\s*%|\$\s*\d|\d+[.,]\d+|\d{2,}|\b(seis|doce|dieciocho|veinte|treinta|cincuenta|cien)\b", re.I)
 _ELOGIO = re.compile(r"convenc|concret|s[óo]lid|\bclar[oa]s?\b|excelente|bien (fundament|sustent|argument|plantead)|"
                     r"me gusta|acert|robust|convincente|contundente|datos", re.I)
 _RESERVA = re.compile(r"\b(no|sin|falta|faltan|pero|sin embargo|aunque|debil|débil|insuficiente)\b", re.I)
@@ -374,7 +375,8 @@ def reaccion_coherente(reaccion: str, lectura: str) -> str:
     """Cuando el tope baja la lectura, la reacción del modelo puede seguir elogiando («convenció con datos
     concretos»). Se quitan las frases de elogio sin reserva y se cierra con el juicio que corresponde a la lectura."""
     frases = [f for f in re.split(r"(?<=[.!?])\s+", (reaccion or "").strip()) if f]
-    quedan = [f for f in frases if not _ELOGIO.search(f) or _RESERVA.search(f)][:2]
+    # El tope solo se aplica si el equipo no dio cifras: toda cifra en la reacción la inventó el modelo.
+    quedan = [f for f in frases if (not _ELOGIO.search(f) or _RESERVA.search(f)) and not _CIFRA.search(f)][:2]
     if lectura == "no_convence":
         juicio = ("Pero no dieron cifras, plazos ni responsables concretos de su propuesta; así no me convence."
                   if quedan else

@@ -51,3 +51,14 @@ def test_repregunta_normal_no_se_anuncia():
     thread = [{"kind": "q", "cid": "cfo", "text": "¿Cuál es el ROI?"}, {"kind": "a", "text": "Del 18 % a 3 años."}]
     ev = _eventos(FakeLLM(), "/api/follow", cid="cfo", thread=thread)
     assert not [e for e in ev if e["type"] == "speak"]
+
+
+def test_junta_respuesta_confusa_no_convence_y_no_inventa_cifras():
+    llm = FakeLLM(payload={"reaccion": "La simulación del ROI muestra una inversión de $1.670M para el año 1.",
+                           "lectura": "convence", "vacios": []})
+    thread = [{"kind": "q", "cid": "cfo", "text": "¿Cuál es el ROI?"},
+              {"kind": "a", "text": "John: no entiendo la pregunta, podría cambiarla; al menos 100% el año cero"}]
+    ev = _eventos(llm, "/api/follow", cid="cfo", thread=thread, junta=True)
+    assert not [e for e in ev if e["type"] == "speak"]
+    d = ev[-1]["data"]
+    assert d["lectura"] == "no_convence" and "1.670" not in d["reaccion"] and "no hay repreguntas" in d["reaccion"]

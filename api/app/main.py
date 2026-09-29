@@ -276,7 +276,7 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
             # Junta: si la respuesta es vacía o el tope determinista va a bajar la lectura, la reacción del modelo se
             # reescribe al final; no se anticipa la voz (el cliente la dice con el texto final).
             ajuste = kind == "follow" and bool(req.junta) and (
-                respuesta_vacia(last_answer(req)) or lectura_por_respuesta(last_answer(req), "convence")[0] != "convence")
+                respuesta_vacia(last_answer(req)) or is_confused(last_answer(req)) or lectura_por_respuesta(last_answer(req), "convence")[0] != "convence")
 
             async def generate(msgs: list[dict[str, str]]) -> AsyncIterator[str]:
                 acc, stats, spoken = "", {}, speak_key is None or ajuste
@@ -326,6 +326,14 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                     data["reaccion"] = ("No recibí una respuesta a mi pregunta; esperaba datos concretos de su propuesta. "
                                         "Queda en el acta como un punto sin respuesta.")
                     data["vacios"] = (data["vacios"] + ["Respuesta evasiva o vacía: reacción automática del servidor."])[-3:]
+                elif is_confused(last_answer(req)):
+                    # En la junta no hay repreguntas: pedir que se cambie la pregunta no es una respuesta. El modelo
+                    # calificaba «convence» e inventaba cifras que el equipo no dijo.
+                    data["reaccion"] = ("En esta junta no hay repreguntas: su respuesta pide aclarar la pregunta y no "
+                                        "aborda el punto con datos de su propuesta. Queda en el acta como un punto sin "
+                                        "respuesta clara.")
+                    data["lectura"] = "no_convence"
+                    data["vacios"] = (data["vacios"] + ["El equipo no entendió la pregunta: reacción automática del servidor."])[-3:]
                 if req.budget is not None and budget_info(store.caso, req.budget)["nivel"] == "ok":
                     # El modelo a veces afirma que el equipo «excede el techo» aunque el total calculado está dentro.
                     data["vacios"] = [v for v in data["vacios"] if not _EXCESO.search(v)]
@@ -335,6 +343,8 @@ def create_app(settings: Settings | None = None, llm: Any = None, tts: Any = "au
                         data["vacios"] = (data["vacios"] + ["Se quitó de la reacción una afirmación falsa: el total está dentro del techo."])[-3:]
                 data["lectura"] = coherencia_lectura(data["reaccion"], data["lectura"])
                 data["lectura"], nota = lectura_por_respuesta(last_answer(req), data["lectura"])
+                if is_confused(last_answer(req)) and not respuesta_vacia(last_answer(req)):
+                    data["lectura"], nota = "no_convence", ""
                 if nota and not respuesta_vacia(last_answer(req)):
                     data["reaccion"] = reaccion_coherente(data["reaccion"], data["lectura"])
                     data["vacios"] = (data["vacios"] + [nota])[-3:]
